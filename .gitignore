@@ -1,0 +1,6 @@
+/Scrubx.Cli
+Scrubx.Cli-osx-arm64
+*.docx
+obj/
+bin/
+.antigravitycli/

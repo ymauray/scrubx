@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Scrubx — Vérification de mise en forme Word</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header>
+  <h1>Scrubx</h1>
+  <p>Vérifiez la mise en forme typographique d'un document Word (.docx).</p>
+</header>
+
+<main>
+  <section class="panel">
+    <h2>1. Règles à appliquer</h2>
+    <div id="rules-list" class="rules-list">Chargement des règles...</div>
+  </section>
+
+  <section class="panel">
+    <h2>2. Document à analyser</h2>
+    <form id="upload-form">
+      <input type="file" id="file-input" accept=".docx" required>
+      <button type="submit" id="submit-btn">Analyser</button>
+    </form>
+  </section>
+
+  <section class="panel">
+    <h2>3. Rapport</h2>
+    <div id="report">Aucune analyse effectuée pour l'instant.</div>
+  </section>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>

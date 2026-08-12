@@ -1,0 +1,66 @@
+using Scrubx.Cli;
+
+const long MaxUploadBytes = 20 * 1024 * 1024; // 20 Mo
+
+var builder = WebApplication.CreateBuilder(args);
+var app = builder.Build();
+
+app.UseDefaultFiles();
+app.UseStaticFiles();
+
+app.MapGet("/api/rules", () => Results.Ok(RuleCatalog.All));
+
+app.MapPost("/api/validate", async (HttpRequest request) =>
+{
+    if (!request.HasFormContentType)
+    {
+        return Results.BadRequest(new { error = "Requête multipart/form-data attendue." });
+    }
+
+    var form = await request.ReadFormAsync();
+    var file = form.Files.GetFile("file");
+
+    if (file == null || file.Length == 0)
+    {
+        return Results.BadRequest(new { error = "Aucun fichier fourni (champ 'file' attendu)." });
+    }
+
+    if (!Path.GetExtension(file.FileName).Equals(".docx", StringComparison.OrdinalIgnoreCase))
+    {
+        return Results.BadRequest(new { error = "Le fichier doit avoir l'extension .docx." });
+    }
+
+    if (file.Length > MaxUploadBytes)
+    {
+        return Results.BadRequest(new { error = $"Fichier trop volumineux (max {MaxUploadBytes / (1024 * 1024)} Mo)." });
+    }
+
+    // Règles désactivées transmises en tant que valeurs répétées du champ 'disabledRules'.
+    var disabledRules = form["disabledRules"]
+        .SelectMany(v => v?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) ?? [])
+        .ToHashSet();
+
+    var enabledRules = RuleCatalog.AllRuleNames
+        .Where(r => !disabledRules.Contains(r))
+        .ToHashSet();
+
+    await using var stream = file.OpenReadStream();
+    var report = DocxValidator.Validate(stream, enabledRules);
+
+    var response = new
+    {
+        isValid = report.IsValid,
+        errors = report.Errors.Select(e => new
+        {
+            ruleName = e.RuleName,
+            title = RuleCatalog.GetTitle(e.RuleName),
+            message = e.Message,
+            context = e.Context,
+            isWarning = e.IsWarning
+        })
+    };
+
+    return Results.Ok(response);
+});
+
+app.Run();

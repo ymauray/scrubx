@@ -1,0 +1,123 @@
+:root {
+  --bg: #f5f5f4;
+  --panel: #ffffff;
+  --border: #d9d6d0;
+  --text: #262421;
+  --muted: #74706a;
+  --accent: #8a4b2f;
+  --error: #b3261e;
+  --warning: #8a6d1a;
+  --ok: #2e6b3e;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+header {
+  padding: 2rem 1.5rem 1rem;
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+header h1 { margin: 0 0 0.25rem; }
+header p { margin: 0; color: var(--muted); }
+
+main {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 0 1.5rem 3rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1.25rem 1.5rem;
+}
+
+.panel h2 {
+  margin-top: 0;
+  font-size: 1rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.rules-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.rule-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+}
+
+.rule-item input { margin-top: 0.2rem; }
+
+.rule-item .badge {
+  font-size: 0.7rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  background: #f0e3d4;
+  color: var(--warning);
+  margin-left: 0.4rem;
+}
+
+#upload-form {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+button {
+  background: var(--accent);
+  color: white;
+  border: none;
+  padding: 0.55rem 1.1rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.95rem;
+}
+
+button:disabled { opacity: 0.6; cursor: not-allowed; }
+
+#report { color: var(--muted); }
+
+.report-summary {
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+}
+.report-summary.ok { color: var(--ok); }
+.report-summary.error { color: var(--error); }
+.report-summary.warning { color: var(--warning); }
+
+.issue-group {
+  border-top: 1px solid var(--border);
+  padding: 0.6rem 0;
+}
+.issue-group:first-child { border-top: none; }
+
+.issue-group .title { font-weight: 600; color: var(--text); }
+.issue-group .title.warning { color: var(--warning); }
+.issue-group .title.error { color: var(--error); }
+.issue-group .count { color: var(--muted); font-weight: 400; }
+
+.issue-context {
+  font-family: ui-monospace, monospace;
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin: 0.25rem 0 0 1rem;
+}

@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/Scrubx.Core/Scrubx.Core.csproj" />
     <Project Path="src/Scrubx.Cli/Scrubx.Cli.csproj" />
   </Folder>
   <Folder Name="/tests/">

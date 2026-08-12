@@ -81,12 +81,12 @@ public static class DocxValidator
 {
     private static readonly XNamespace WNamespace = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 
-    public static ValidationReport Validate(string docxPath)
+    public static ValidationReport Validate(string docxPath, IReadOnlySet<string>? enabledRules = null)
     {
         try
         {
             using var stream = File.OpenRead(docxPath);
-            return Validate(stream);
+            return Validate(stream, enabledRules);
         }
         catch (Exception ex)
         {
@@ -100,10 +100,13 @@ public static class DocxValidator
         }
     }
 
-    public static ValidationReport Validate(Stream docxStream)
+    public static ValidationReport Validate(Stream docxStream, IReadOnlySet<string>? enabledRules = null)
     {
+        enabledRules ??= RuleCatalog.AllRuleNames;
+        bool IsEnabled(string ruleName) => enabledRules.Contains(ruleName);
+
         var report = new ValidationReport();
-        
+
         try
         {
             using var archive = new ZipArchive(docxStream, ZipArchiveMode.Read, leaveOpen: true);
@@ -135,7 +138,7 @@ public static class DocxValidator
                     var text = string.Concat(p.Descendants(WNamespace + "t").Select(e => e.Value));
 
                     // Check: space at the end of paragraph
-                    if (text.Length > 0)
+                    if (IsEnabled("EspaceFinParagraphe") && text.Length > 0)
                     {
                         char lastChar = text[^1];
                         if (lastChar == ' ' || lastChar == '\u00A0' || lastChar == '\u202F' || lastChar == '\t')
@@ -150,7 +153,7 @@ public static class DocxValidator
                         }
                     }
                     // Check: two consecutive spaces (ordinary, non-breaking, or narrow non-breaking)
-                    for (int idx = 0; idx < text.Length - 1; idx++)
+                    for (int idx = 0; IsEnabled("DoubleEspace") && idx < text.Length - 1; idx++)
                     {
                         char c1 = text[idx];
                         char c2 = text[idx + 1];
@@ -174,7 +177,9 @@ public static class DocxValidator
                     }
 
                     // Check: comma before "et" (warning)
-                    var commaMatches = Regex.Matches(text, @",[\s\u00A0\u202F]*et\b", RegexOptions.IgnoreCase);
+                    var commaMatches = IsEnabled("VirguleAvantEt")
+                        ? Regex.Matches(text, @",[\s\u00A0\u202F]*et\b", RegexOptions.IgnoreCase)
+                        : Enumerable.Empty<Match>();
                     foreach (Match match in commaMatches)
                     {
                         var context = GetContext(text, match.Index, match.Length);
@@ -188,8 +193,9 @@ public static class DocxValidator
                     }
 
                     // Check page breaks: manual breaks (<w:br w:type="page"/>)
-                    var manualBreaksCount = p.Descendants(WNamespace + "br")
-                        .Count(br => br.Attribute(WNamespace + "type")?.Value == "page");
+                    var manualBreaksCount = IsEnabled("SautDePageDetecte")
+                        ? p.Descendants(WNamespace + "br").Count(br => br.Attribute(WNamespace + "type")?.Value == "page")
+                        : 0;
                     if (manualBreaksCount > 0)
                     {
                         var context = GetContext(text, 0, 0);
@@ -202,7 +208,9 @@ public static class DocxValidator
                     }
 
                     // Check page breaks: paragraph pageBreakBefore property
-                    var pageBreakBefore = p.Element(WNamespace + "pPr")?.Element(WNamespace + "pageBreakBefore");
+                    var pageBreakBefore = IsEnabled("SautDePageDetecte")
+                        ? p.Element(WNamespace + "pPr")?.Element(WNamespace + "pageBreakBefore")
+                        : null;
                     if (pageBreakBefore != null)
                     {
                         var val = pageBreakBefore.Attribute(WNamespace + "val")?.Value;
@@ -229,7 +237,7 @@ public static class DocxValidator
                             hasTitre1 = true;
                         }
 
-                        if (styleName != "Normal" && styleName != "Titre1" && styleName != "Ellipse")
+                        if (IsEnabled("StyleParagrapheInvalide") && styleName != "Normal" && styleName != "Titre1" && styleName != "Ellipse")
                         {
                             var context = GetContext(text, 0, 0);
                             report.Errors.Add(new ValidationError
@@ -242,7 +250,7 @@ public static class DocxValidator
                     }
                     
                     // Check 1: straight apostrophes
-                    int aposIdx = text.IndexOf('\'');
+                    int aposIdx = IsEnabled("ApostropheDroite") ? text.IndexOf('\'') : -1;
                     while (aposIdx != -1)
                     {
                         var context = GetContext(text, aposIdx, 1);
@@ -256,7 +264,7 @@ public static class DocxValidator
                     }
 
                     // Check 5: straight double quotes "
-                    int quoteIdx = text.IndexOf('"');
+                    int quoteIdx = IsEnabled("GuillemetDroit") ? text.IndexOf('"') : -1;
                     while (quoteIdx != -1)
                     {
                         var context = GetContext(text, quoteIdx, 1);
@@ -291,7 +299,7 @@ public static class DocxValidator
                     bool startsWithInvalidDashText = trimmedText.Length > 0 && (trimmedText[0] == '-' || trimmedText[0] == '–');
                     bool startsWithInvalidDashList = listPrefix.Length > 0 && (listPrefix[0] == '-' || listPrefix[0] == '–');
 
-                    if (startsWithInvalidDashText)
+                    if (IsEnabled("TiretDebutInvalide") && startsWithInvalidDashText)
                     {
                         var context = GetContext(text, leadingSpacesCount, 1);
                         report.Errors.Add(new ValidationError
@@ -301,7 +309,7 @@ public static class DocxValidator
                             Context = context
                         });
                     }
-                    else if (startsWithInvalidDashList)
+                    else if (IsEnabled("TiretDebutInvalide") && startsWithInvalidDashList)
                     {
                         var context = GetContext(text, 0, 0);
                         report.Errors.Add(new ValidationError
@@ -313,7 +321,7 @@ public static class DocxValidator
                     }
 
                     // Check 3: non-breaking space after em-dash U+2014 (—)
-                    if (trimmedText.StartsWith('—'))
+                    if (IsEnabled("EspaceInsecableManquante") && trimmedText.StartsWith('—'))
                     {
                         bool invalidSpace = false;
                         if (trimmedText.Length == 1)
@@ -343,7 +351,7 @@ public static class DocxValidator
                     }
 
                     // Check 4: non-breaking space before ! and ?
-                    for (int idx = 0; idx < text.Length; idx++)
+                    for (int idx = 0; IsEnabled("EspaceInsecablePonctuation") && idx < text.Length; idx++)
                     {
                         char c = text[idx];
                         if (c == '!' || c == '?')
@@ -382,7 +390,7 @@ public static class DocxValidator
                     }
 
                     // Check 6: spacing around French quotes « and »
-                    for (int idx = 0; idx < text.Length; idx++)
+                    for (int idx = 0; IsEnabled("EspaceGuillemet") && idx < text.Length; idx++)
                     {
                         char c = text[idx];
                         if (c == '«')
@@ -470,7 +478,7 @@ public static class DocxValidator
                 }
             }
 
-            if (!hasTitre1)
+            if (IsEnabled("StyleTitre1Manquant") && !hasTitre1)
             {
                 report.Errors.Add(new ValidationError
                 {

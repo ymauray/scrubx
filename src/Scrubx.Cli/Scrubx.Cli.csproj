@@ -7,6 +7,10 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\Scrubx.Core\Scrubx.Core.csproj" />
+  </ItemGroup>
+
   <!-- Configuration pour la publication d'un binaire standalone -->
   <PropertyGroup Condition="'$(Configuration)' == 'Release' And '$(RuntimeIdentifier)' != ''">
     <PublishSingleFile>true</PublishSingleFile>

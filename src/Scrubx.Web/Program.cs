@@ -1,9 +1,17 @@
+using Microsoft.AspNetCore.HttpOverrides;
 using Scrubx.Cli;
 
 const long MaxUploadBytes = 20 * 1024 * 1024; // 20 Mo
 
 var builder = WebApplication.CreateBuilder(args);
 var app = builder.Build();
+
+// L'application tourne derrière un reverse proxy nginx : elle ne voit que des
+// requêtes en provenance de localhost, ces en-têtes restituent le vrai schéma/IP client.
+app.UseForwardedHeaders(new ForwardedHeadersOptions
+{
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
+});
 
 app.UseDefaultFiles();
 app.UseStaticFiles();

@@ -1,0 +1,47 @@
+# Exemple de configuration nginx pour Scrubx.Web, en reverse proxy vers Kestrel
+# (qui écoute en local sur 127.0.0.1:5099, voir src/Scrubx.Web/appsettings.json).
+#
+# À adapter (server_name, chemins TLS) puis placer dans /etc/nginx/sites-available/
+# et lier dans sites-enabled/.
+
+server {
+    listen 80;
+    server_name scrubx.example.com;
+
+    # Redirection vers HTTPS une fois le certificat en place.
+    # return 301 https://$host$request_uri;
+
+    # Doit être >= à MaxUploadBytes défini dans Program.cs (20 Mo), avec une marge.
+    client_max_body_size 25m;
+
+    location / {
+        proxy_pass http://127.0.0.1:5099;
+        proxy_http_version 1.1;
+
+        # Nécessaires pour que ForwardedHeadersMiddleware restitue le vrai client/schéma.
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection keep-alive;
+    }
+}
+
+# server {
+#     listen 443 ssl http2;
+#     server_name scrubx.example.com;
+#
+#     ssl_certificate     /etc/letsencrypt/live/scrubx.example.com/fullchain.pem;
+#     ssl_certificate_key /etc/letsencrypt/live/scrubx.example.com/privkey.pem;
+#
+#     client_max_body_size 25m;
+#
+#     location / {
+#         proxy_pass http://127.0.0.1:5099;
+#         proxy_http_version 1.1;
+#         proxy_set_header Host $host;
+#         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+#         proxy_set_header X-Forwarded-Proto $scheme;
+#     }
+# }

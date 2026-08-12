@@ -1,0 +1,31 @@
+# Exemple d'unité systemd pour exécuter le binaire standalone Scrubx.Web
+# (publié en self-contained via publish.sh -r linux-x64, cf. src/Scrubx.Web).
+#
+# À adapter puis copier dans /etc/systemd/system/scrubx-web.service, puis :
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now scrubx-web
+
+[Unit]
+Description=Scrubx Web (vérification de mise en forme Word)
+After=network.target
+
+[Service]
+Type=notify
+WorkingDirectory=/opt/scrubx-web
+ExecStart=/opt/scrubx-web/Scrubx.Web
+Restart=on-failure
+RestartSec=5
+User=scrubx
+Group=scrubx
+Environment=ASPNETCORE_ENVIRONMENT=Production
+# Kestrel écoute déjà en local via appsettings.json (Kestrel:Endpoints:Http:Url).
+# Surcharge possible ici si besoin : Environment=ASPNETCORE_URLS=http://127.0.0.1:5099
+
+# Durcissement minimal.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/scrubx-web
+
+[Install]
+WantedBy=multi-user.target

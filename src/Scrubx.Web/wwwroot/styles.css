@@ -52,6 +52,12 @@ main {
   letter-spacing: 0.04em;
 }
 
+.hint {
+  margin: 0.6rem 0 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
 .rules-list {
   display: flex;
   flex-direction: column;

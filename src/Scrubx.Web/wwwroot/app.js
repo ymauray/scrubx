@@ -26,7 +26,7 @@ function saveDisabledRuleNames() {
 }
 
 async function loadRules() {
-  const res = await fetch("/api/rules");
+  const res = await fetch("api/rules");
   rules = await res.json();
   const disabledRuleNames = loadDisabledRuleNames();
 
@@ -152,7 +152,7 @@ formEl.addEventListener("submit", async (event) => {
     formData.append("file", file);
     formData.append("disabledRules", getDisabledRuleNames().join(","));
 
-    const res = await fetch("/api/validate", { method: "POST", body: formData });
+    const res = await fetch("api/validate", { method: "POST", body: formData });
     const data = await res.json();
 
     if (!res.ok) {

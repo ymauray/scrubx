@@ -26,6 +26,24 @@ server {
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection keep-alive;
     }
+
+    # Pour monter l'appli sous un sous-chemin (ex. https://exemple.com/scrubx/)
+    # plutôt qu'à la racine du domaine, remplacer le bloc "location /" ci-dessus par :
+    #
+    # location = /scrubx {
+    #     return 301 /scrubx/;   # évite que /scrubx (sans slash) casse les chemins relatifs du frontend
+    # }
+    # location /scrubx/ {
+    #     proxy_pass http://127.0.0.1:5099/;   # le "/" final est indispensable : sans lui,
+    #                                          # nginx transmet l'URI d'origine ("/scrubx/...")
+    #                                          # telle quelle au backend, qui n'a pas ces routes.
+    #     proxy_http_version 1.1;
+    #     proxy_set_header Host $host;
+    #     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    #     proxy_set_header X-Forwarded-Proto $scheme;
+    #     proxy_set_header Upgrade $http_upgrade;
+    #     proxy_set_header Connection keep-alive;
+    # }
 }
 
 # server {

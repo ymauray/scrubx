@@ -58,6 +58,19 @@ main {
   gap: 0.5rem;
 }
 
+.rules-theme {
+  margin: 1rem 0 0.25rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.rules-theme:first-child {
+  margin-top: 0;
+}
+
 .rule-item {
   display: flex;
   align-items: flex-start;

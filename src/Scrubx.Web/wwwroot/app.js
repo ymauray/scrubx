@@ -30,28 +30,41 @@ async function loadRules() {
   rules = await res.json();
   const disabledRuleNames = loadDisabledRuleNames();
 
-  rulesListEl.innerHTML = "";
+  const themes = new Map();
   for (const rule of rules) {
-    const label = document.createElement("label");
-    label.className = "rule-item";
+    if (!themes.has(rule.theme)) themes.set(rule.theme, []);
+    themes.get(rule.theme).push(rule);
+  }
 
-    const checkbox = document.createElement("input");
-    checkbox.type = "checkbox";
-    checkbox.checked = !disabledRuleNames.has(rule.ruleName);
-    checkbox.value = rule.ruleName;
+  rulesListEl.innerHTML = "";
+  for (const [theme, themeRules] of themes) {
+    const heading = document.createElement("h3");
+    heading.className = "rules-theme";
+    heading.textContent = theme;
+    rulesListEl.appendChild(heading);
 
-    const span = document.createElement("span");
-    span.textContent = rule.title;
-    if (rule.isWarningByDefault) {
-      const badge = document.createElement("span");
-      badge.className = "badge";
-      badge.textContent = "avertissement";
-      span.appendChild(badge);
+    for (const rule of themeRules) {
+      const label = document.createElement("label");
+      label.className = "rule-item";
+
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.checked = !disabledRuleNames.has(rule.ruleName);
+      checkbox.value = rule.ruleName;
+
+      const span = document.createElement("span");
+      span.textContent = rule.title;
+      if (rule.isWarningByDefault) {
+        const badge = document.createElement("span");
+        badge.className = "badge";
+        badge.textContent = "avertissement";
+        span.appendChild(badge);
+      }
+
+      label.appendChild(checkbox);
+      label.appendChild(span);
+      rulesListEl.appendChild(label);
     }
-
-    label.appendChild(checkbox);
-    label.appendChild(span);
-    rulesListEl.appendChild(label);
   }
 }
 

@@ -13,18 +13,21 @@
 </header>
 
 <main>
-  <section class="panel">
-    <h2>1. Règles à appliquer</h2>
-    <div id="rules-list" class="rules-list">Chargement des règles...</div>
-  </section>
-
-  <section class="panel">
-    <h2>2. Document à analyser</h2>
-    <form id="upload-form">
+  <form id="upload-form">
+    <section class="panel">
+      <h2>1. Document à analyser</h2>
       <input type="file" id="file-input" accept=".docx" required>
+    </section>
+
+    <section class="panel">
+      <h2>2. Règles à appliquer</h2>
+      <div id="rules-list" class="rules-list">Chargement des règles...</div>
+    </section>
+
+    <div class="actions">
       <button type="submit" id="submit-btn">Analyser</button>
-    </form>
-  </section>
+    </div>
+  </form>
 
   <section class="panel">
     <h2>3. Rapport</h2>

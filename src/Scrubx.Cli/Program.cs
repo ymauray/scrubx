@@ -85,7 +85,7 @@ static void DisplayGroupedIssues(System.Collections.Generic.List<ValidationError
     var grouped = issues.GroupBy(e => e.RuleName);
     foreach (var group in grouped)
     {
-        var title = GetRuleTitle(group.Key);
+        var title = RuleCatalog.GetTitle(group.Key);
         var count = group.Count();
         Console.WriteLine($"* {title} ({count} occurrence{(count > 1 ? "s" : "")})");
         
@@ -102,28 +102,6 @@ static void DisplayGroupedIssues(System.Collections.Generic.List<ValidationError
     }
 }
 
-static string GetRuleTitle(string ruleName)
-{
-    return ruleName switch
-    {
-        "ApostropheDroite" => "Apostrophes droites détectées (veuillez utiliser des apostrophes courbées ’)",
-        "TiretDebutInvalide" => "Tirets/puces de début de ligne invalides (veuillez utiliser des tirets cadratins —)",
-        "EspaceInsecableManquante" => "Espaces insécables manquantes après un tiret cadratin",
-        "EspaceInsecablePonctuation" => "Espaces insécables manquantes avant un point d'exclamation ou d'interrogation (! ou ?)",
-        "GuillemetDroit" => "Guillemets droits détectés (veuillez utiliser des guillemets français « ou »)",
-        "EspaceGuillemet" => "Espaces insécables manquantes autour des guillemets français (« ou »)",
-        "StyleParagrapheInvalide" => "Styles de paragraphe non autorisés (veuillez utiliser uniquement 'Normal', 'Titre1' ou 'Ellipse')",
-        "StyleTitre1Manquant" => "Style de paragraphe 'Titre1' manquant (le document doit contenir au moins un paragraphe portant ce style)",
-        "SautDePageDetecte" => "Saut de page détecté (les sauts de page ne sont pas autorisés)",
-        "EspaceFinParagraphe" => "Espace en fin de paragraphe détectée (veuillez la supprimer)",
-        "DoubleEspace" => "Espaces consécutives détectées (les doubles espaces ne sont pas autorisées)",
-        "VirguleAvantEt" => "Virgule détectée juste avant le mot 'et' (avertissement d'énumération)",
-        "LectureFichier" => "Erreur d'ouverture du fichier",
-        "LectureDocument" => "Erreur de lecture du document",
-        _ => "Autres anomalies"
-    };
-}
-
 static void DisplayWarnings(System.Collections.Generic.List<ValidationError> warnings, bool showWarnings, bool verbose)
 {
     if (showWarnings)
@@ -135,7 +113,7 @@ static void DisplayWarnings(System.Collections.Generic.List<ValidationError> war
         var grouped = warnings.GroupBy(e => e.RuleName);
         foreach (var group in grouped)
         {
-            var title = GetRuleTitle(group.Key);
+            var title = RuleCatalog.GetTitle(group.Key);
             Console.WriteLine($"* {title}");
         }
     }

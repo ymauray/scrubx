@@ -1,0 +1,41 @@
+# Exemple d'unité systemd pour exécuter le binaire standalone Scrubx.Web
+# (publié en self-contained via `dotnet publish -r linux-x64 --self-contained`,
+# voir la section "Déploiement en production" du README).
+#
+# À adapter puis copier dans /etc/systemd/system/scrubx-web.service, puis :
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now scrubx-web
+
+[Unit]
+Description=Scrubx Web (vérification de mise en forme Word)
+After=network.target
+
+[Service]
+# Type=simple : l'appli n'intègre pas Microsoft.Extensions.Hosting.Systemd
+# (UseSystemd()), donc elle n'envoie jamais le signal sd_notify READY=1.
+# Avec Type=notify, `systemctl start` resterait bloqué jusqu'à TimeoutStartSec
+# (90s par défaut) en attendant ce signal qui n'arrive jamais.
+Type=simple
+WorkingDirectory=/opt/scrubx-web
+ExecStart=/opt/scrubx-web/Scrubx.Web
+Restart=on-failure
+RestartSec=5
+User=scrubx
+Group=scrubx
+Environment=ASPNETCORE_ENVIRONMENT=Production
+# Kestrel écoute déjà en local via appsettings.json (Kestrel:Endpoints:Http:Url).
+# Surcharge possible ici si besoin : Environment=ASPNETCORE_URLS=http://127.0.0.1:5099
+
+# Durcissement minimal. ProtectHome=true masque /home (et tout ce qui est
+# dessous) pour ce service : si vous déployez ailleurs que /opt (ex. sous
+# /home/<user>/...), l'exécutable devient introuvable pour systemd même s'il
+# existe bien sur le disque ("Failed to locate executable ... No such file or
+# directory"). Adaptez WorkingDirectory/ExecStart/ReadWritePaths à votre
+# chemin réel, ou passez ProtectHome à false si vous déployez sous /home.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/scrubx-web
+
+[Install]
+WantedBy=multi-user.target

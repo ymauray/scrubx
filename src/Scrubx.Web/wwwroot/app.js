@@ -6,9 +6,29 @@ const reportEl = document.getElementById("report");
 
 let rules = [];
 
+const DISABLED_RULES_STORAGE_KEY = "scrubx.disabledRules";
+
+function loadDisabledRuleNames() {
+  try {
+    const raw = localStorage.getItem(DISABLED_RULES_STORAGE_KEY);
+    return raw ? new Set(JSON.parse(raw)) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+function saveDisabledRuleNames() {
+  try {
+    localStorage.setItem(DISABLED_RULES_STORAGE_KEY, JSON.stringify(getDisabledRuleNames()));
+  } catch {
+    // localStorage indisponible (navigation privée, quota, etc.) : la préférence ne sera simplement pas retenue.
+  }
+}
+
 async function loadRules() {
   const res = await fetch("/api/rules");
   rules = await res.json();
+  const disabledRuleNames = loadDisabledRuleNames();
 
   rulesListEl.innerHTML = "";
   for (const rule of rules) {
@@ -17,7 +37,7 @@ async function loadRules() {
 
     const checkbox = document.createElement("input");
     checkbox.type = "checkbox";
-    checkbox.checked = true;
+    checkbox.checked = !disabledRuleNames.has(rule.ruleName);
     checkbox.value = rule.ruleName;
 
     const span = document.createElement("span");
@@ -34,6 +54,12 @@ async function loadRules() {
     rulesListEl.appendChild(label);
   }
 }
+
+rulesListEl.addEventListener("change", (event) => {
+  if (event.target.matches("input[type=checkbox]")) {
+    saveDisabledRuleNames();
+  }
+});
 
 function getDisabledRuleNames() {
   return [...rulesListEl.querySelectorAll("input[type=checkbox]")]

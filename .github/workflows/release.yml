@@ -1,0 +1,91 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  build-cli-web:
+    name: Build Scrubx.Cli / Scrubx.Web
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Publish Scrubx.Cli (osx-arm64, win-x64, linux-x64)
+        run: |
+          for rid in osx-arm64 win-x64 linux-x64; do
+            dotnet publish src/Scrubx.Cli/Scrubx.Cli.csproj -c Release -r "$rid" -o "artifacts/Scrubx.Cli-$rid"
+          done
+
+      - name: Publish Scrubx.Web (linux-x64)
+        run: dotnet publish src/Scrubx.Web/Scrubx.Web.csproj -c Release -r linux-x64 --self-contained -o artifacts/Scrubx.Web-linux-x64
+
+      - name: Archive artifacts
+        working-directory: artifacts
+        run: |
+          for dir in */; do
+            name="${dir%/}"
+            zip -r "../$name.zip" "$name"
+          done
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-cli-web
+          path: "*.zip"
+
+  build-desktop:
+    name: Build Scrubx.Desktop
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Publish Scrubx.Desktop (win-x64)
+        run: dotnet publish src/Scrubx.Desktop/Scrubx.Desktop.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o artifacts/Scrubx.Desktop-win-x64
+
+      - name: Archive artifact
+        run: Compress-Archive -Path artifacts/Scrubx.Desktop-win-x64/* -DestinationPath Scrubx.Desktop-win-x64.zip
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-desktop
+          path: "*.zip"
+
+  release:
+    name: Create GitHub Release
+    needs: [build-cli-web, build-desktop]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view "${{ github.ref_name }}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release upload "${{ github.ref_name }}" dist/*.zip --repo "${{ github.repository }}" --clobber
+          else
+            gh release create "${{ github.ref_name }}" dist/*.zip --repo "${{ github.repository }}" --title "${{ github.ref_name }}" --generate-notes
+          fi

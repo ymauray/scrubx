@@ -34,6 +34,8 @@ faire à cet unique endroit.
 
 ## Conventions
 
+- Tout commit créé par Claude se termine par un trailer
+  `Co-Authored-By: Claude <noreply@anthropic.com>`.
 - Commits : [Conventional Commits](https://www.conventionalcommits.org/)
   en minuscules, description en français (`feat:`, `fix:`, `refactor:`,
   `style:`, `docs:`, `content:`). Petits commits fonctionnels et

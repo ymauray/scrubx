@@ -10,6 +10,7 @@ public class CommandLineOptions
     public bool Verbose { get; set; }
     public bool ShowWarnings { get; set; }
     public List<string> IgnoredRuleCodes { get; set; } = new();
+    public List<string> ForcedRuleCodes { get; set; } = new();
 }
 
 public static class ArgumentParser
@@ -30,6 +31,19 @@ public static class ArgumentParser
                 else
                 {
                     options.ErrorMessage = "Erreur : Code(s) de règle manquant(s) après l'option -i/--ignore.";
+                    return options;
+                }
+            }
+            else if (arg == "-f" || arg == "--force")
+            {
+                if (i + 1 < args.Length)
+                {
+                    var codes = args[++i].Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                    options.ForcedRuleCodes.AddRange(codes);
+                }
+                else
+                {
+                    options.ErrorMessage = "Erreur : Code(s) de règle manquant(s) après l'option -f/--force.";
                     return options;
                 }
             }

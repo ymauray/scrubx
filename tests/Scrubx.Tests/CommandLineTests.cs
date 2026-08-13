@@ -260,4 +260,75 @@ public class CommandLineTests
         Assert.Equal(["APOS", "GDROIT", "TIRET"], options.IgnoredRuleCodes);
         Assert.Null(options.ErrorMessage);
     }
+
+    [Fact]
+    public void Parse_WithForceOptionButNoValue_ReturnsErrorMessage()
+    {
+        // Arrange
+        string[] args = ["document.docx", "-f"];
+
+        // Act
+        var options = ArgumentParser.Parse(args);
+
+        // Assert
+        Assert.NotNull(options.ErrorMessage);
+        Assert.Contains("manquant", options.ErrorMessage);
+    }
+
+    [Fact]
+    public void Parse_WithSingleForceCode_ReturnsForcedRuleCode()
+    {
+        // Arrange
+        string[] args = ["document.docx", "-f", "VIRGET"];
+
+        // Act
+        var options = ArgumentParser.Parse(args);
+
+        // Assert
+        Assert.Equal(["VIRGET"], options.ForcedRuleCodes);
+        Assert.Null(options.ErrorMessage);
+    }
+
+    [Fact]
+    public void Parse_WithCommaSeparatedForceCodes_ReturnsAllForcedRuleCodes()
+    {
+        // Arrange
+        string[] args = ["document.docx", "-f", "APOS,GDROIT,TIRET"];
+
+        // Act
+        var options = ArgumentParser.Parse(args);
+
+        // Assert
+        Assert.Equal(["APOS", "GDROIT", "TIRET"], options.ForcedRuleCodes);
+        Assert.Null(options.ErrorMessage);
+    }
+
+    [Fact]
+    public void Parse_WithRepeatedForceOption_AccumulatesRuleCodes()
+    {
+        // Arrange
+        string[] args = ["document.docx", "--force", "APOS", "-f", "GDROIT,TIRET"];
+
+        // Act
+        var options = ArgumentParser.Parse(args);
+
+        // Assert
+        Assert.Equal(["APOS", "GDROIT", "TIRET"], options.ForcedRuleCodes);
+        Assert.Null(options.ErrorMessage);
+    }
+
+    [Fact]
+    public void Parse_WithIgnoreAndForceOptions_KeepsBothListsIndependent()
+    {
+        // Arrange
+        string[] args = ["document.docx", "-i", "APOS", "-f", "GDROIT"];
+
+        // Act
+        var options = ArgumentParser.Parse(args);
+
+        // Assert
+        Assert.Equal(["APOS"], options.IgnoredRuleCodes);
+        Assert.Equal(["GDROIT"], options.ForcedRuleCodes);
+        Assert.Null(options.ErrorMessage);
+    }
 }

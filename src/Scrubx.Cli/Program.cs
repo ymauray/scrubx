@@ -64,21 +64,24 @@ if (configEnabledRules == null)
     return 1;
 }
 
-// Résolution des codes de règles à ignorer (surcharge la config, cf. -i/--ignore)
-var ignoredRuleNames = new System.Collections.Generic.HashSet<string>();
-foreach (var code in options.IgnoredRuleCodes)
+// Résolution des codes de règles à ignorer/forcer (surchargent la config, cf. -i/--ignore et -f/--force)
+if (!TryResolveRuleCodes(options.IgnoredRuleCodes, out var ignoredRuleNames, out var ignoreError))
 {
-    var rule = RuleCatalog.GetByCode(code);
-    if (rule == null)
-    {
-        Console.ForegroundColor = ConsoleColor.Red;
-        Console.WriteLine($"Erreur : Code de règle inconnu '{code}'. Utilisez -r/--show-rules pour lister les codes valides.");
-        Console.ResetColor();
-        return 1;
-    }
-    ignoredRuleNames.Add(rule.RuleName);
+    Console.ForegroundColor = ConsoleColor.Red;
+    Console.WriteLine(ignoreError);
+    Console.ResetColor();
+    return 1;
 }
-var enabledRules = configEnabledRules.Except(ignoredRuleNames).ToHashSet();
+if (!TryResolveRuleCodes(options.ForcedRuleCodes, out var forcedRuleNames, out var forceError))
+{
+    Console.ForegroundColor = ConsoleColor.Red;
+    Console.WriteLine(forceError);
+    Console.ResetColor();
+    return 1;
+}
+
+// -f/--force l'emporte sur -i/--ignore en cas de code commun aux deux options.
+var enabledRules = configEnabledRules.Except(ignoredRuleNames).Union(forcedRuleNames).ToHashSet();
 
 // Validation of file existence and extension
 var fileInfo = new FileInfo(options.InputPath!);
@@ -142,6 +145,25 @@ Console.WriteLine("Félicitations ! Le document est parfaitement valide.");
 Console.ResetColor();
 return 0;
 
+static bool TryResolveRuleCodes(System.Collections.Generic.List<string> codes, out System.Collections.Generic.HashSet<string> ruleNames, out string? errorMessage)
+{
+    ruleNames = new System.Collections.Generic.HashSet<string>();
+    errorMessage = null;
+
+    foreach (var code in codes)
+    {
+        var rule = RuleCatalog.GetByCode(code);
+        if (rule == null)
+        {
+            errorMessage = $"Erreur : Code de règle inconnu '{code}'. Utilisez -r/--show-rules pour lister les codes valides.";
+            return false;
+        }
+        ruleNames.Add(rule.RuleName);
+    }
+
+    return true;
+}
+
 static void DisplayGroupedIssues(System.Collections.Generic.List<ValidationError> issues, bool verbose, ConsoleColor lineColor)
 {
     var grouped = issues.GroupBy(e => e.RuleName);
@@ -204,7 +226,7 @@ static void DisplayWarnings(System.Collections.Generic.List<ValidationError> war
 static void PrintUsage()
 {
     Console.WriteLine("Utilisation :");
-    Console.WriteLine("  Scrubx.Cli <fichier.docx> [-v|--verbose] [-w|--warning] [-i|--ignore <code>[,<code>...]]");
+    Console.WriteLine("  Scrubx.Cli <fichier.docx> [-v|--verbose] [-w|--warning] [-i|--ignore <code>[,<code>...]] [-f|--force <code>[,<code>...]]");
     Console.WriteLine("  Scrubx.Cli -r|--show-rules");
     Console.WriteLine("  Scrubx.Cli -c|--create-config");
     Console.WriteLine("  Scrubx.Cli -h|--help");

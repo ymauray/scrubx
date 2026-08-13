@@ -59,6 +59,11 @@ faire à cet unique endroit.
   (`win-x64`, self-contained, single-file).
 - Portage macOS (`Scrubx.Mac`) : **non démarré**, à faire sur une machine
   macOS réelle (Xcode + workload MAUI requis, cf. `SPECIFICATION.md` §8).
-- Automatisation CI/CD (GitHub Actions pour build+publish+déploiement) :
-  envisagée mais pas commencée — actuellement tout se fait via
-  `dotnet publish` manuel + copie sur le serveur (voir `README.md`).
+- CI/CD : en place (`.github/workflows/tests.yml` sur chaque PR, requis
+  par la protection de `main` ; `.github/workflows/release.yml` sur tag
+  `vX.Y.Z` ou déclenchement manuel, publie les binaires en release
+  GitHub). Le déploiement de `Scrubx.Web` en production reste manuel
+  (copie sur le serveur + `systemctl restart`, voir `README.md`) — pas
+  encore automatisé.
+- Dépôt public depuis le 2026-08-13 (condition requise par GitHub pour
+  activer la protection de branche sur un dépôt sans plan payant).

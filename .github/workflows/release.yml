@@ -4,7 +4,11 @@ on:
   push:
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+"
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag a publier (ex: v0.1.1)"
+        required: true
 
 permissions:
   contents: write
@@ -39,11 +43,19 @@ jobs:
             zip -r "../$name.zip" "$name"
           done
 
+      - name: Package Scrubx.Cli for Homebrew and Scoop
+        run: |
+          tar -czf scrubx-osx-arm64.tar.gz -C artifacts/Scrubx.Cli-osx-arm64 Scrubx.Cli
+          tar -czf scrubx-linux-x64.tar.gz -C artifacts/Scrubx.Cli-linux-x64 Scrubx.Cli
+          zip -j scrubx-win-x64.zip artifacts/Scrubx.Cli-win-x64/Scrubx.Cli.exe
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
         with:
           name: build-cli-web
-          path: "*.zip"
+          path: |
+            *.zip
+            *.tar.gz
 
   build-desktop:
     name: Build Scrubx.Desktop
@@ -74,6 +86,9 @@ jobs:
     needs: [build-cli-web, build-desktop]
     runs-on: ubuntu-latest
     steps:
+      - name: Set release tag
+        run: echo "RELEASE_TAG=${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}" >> "$GITHUB_ENV"
+
       - name: Download artifacts
         uses: actions/download-artifact@v8
         with:
@@ -84,8 +99,86 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if gh release view "${{ github.ref_name }}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
-            gh release upload "${{ github.ref_name }}" dist/*.zip --repo "${{ github.repository }}" --clobber
+          if gh release view "$RELEASE_TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" dist/* --repo "${{ github.repository }}" --clobber
           else
-            gh release create "${{ github.ref_name }}" dist/*.zip --repo "${{ github.repository }}" --title "${{ github.ref_name }}" --generate-notes
+            gh release create "$RELEASE_TAG" dist/* --repo "${{ github.repository }}" --title "$RELEASE_TAG" --generate-notes
           fi
+
+      - name: Update Homebrew tap
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          VERSION=${RELEASE_TAG#v}
+          MACOS_SHA=$(curl --fail --silent --show-error --location "https://github.com/ymauray/scrubx/releases/download/${RELEASE_TAG}/scrubx-osx-arm64.tar.gz" | sha256sum | cut -d' ' -f1)
+          LINUX_SHA=$(curl --fail --silent --show-error --location "https://github.com/ymauray/scrubx/releases/download/${RELEASE_TAG}/scrubx-linux-x64.tar.gz" | sha256sum | cut -d' ' -f1)
+
+          git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/ymauray/homebrew-tap.git" tap
+          cd tap
+          mkdir -p Formula
+          cat > Formula/scrubx.rb << EOF
+          class Scrubx < Formula
+            desc "Utilitaire de verification de la validite d'un document Word"
+            homepage "https://github.com/ymauray/scrubx"
+            version "${VERSION}"
+
+            on_macos do
+              if Hardware::CPU.arm?
+                url "https://github.com/ymauray/scrubx/releases/download/v#{version}/scrubx-osx-arm64.tar.gz"
+                sha256 "${MACOS_SHA}"
+              end
+            end
+
+            on_linux do
+              if Hardware::CPU.intel?
+                url "https://github.com/ymauray/scrubx/releases/download/v#{version}/scrubx-linux-x64.tar.gz"
+                sha256 "${LINUX_SHA}"
+              end
+            end
+
+            def install
+              bin.install "Scrubx.Cli" => "scrubx"
+            end
+          end
+          EOF
+
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git add Formula/scrubx.rb
+          git diff --staged --quiet || git commit -m "bump scrubx to ${VERSION}"
+          git push
+
+      - name: Update Scoop bucket
+        env:
+          SCOOP_BUCKET_TOKEN: ${{ secrets.SCOOP_BUCKET_TOKEN }}
+        run: |
+          VERSION=${RELEASE_TAG#v}
+          WIN_SHA=$(curl --fail --silent --show-error --location "https://github.com/ymauray/scrubx/releases/download/${RELEASE_TAG}/scrubx-win-x64.zip" | sha256sum | cut -d' ' -f1)
+
+          git clone "https://x-access-token:${SCOOP_BUCKET_TOKEN}@github.com/ymauray/scoop-bucket.git" scoop
+          cd scoop
+          VERSION=$VERSION WIN_SHA=$WIN_SHA python3 << 'PYEOF'
+          import json
+          import os
+
+          version = os.environ["VERSION"]
+          manifest = {
+              "version": version,
+              "description": "Utilitaire pour verifier la validite d'un document Word",
+              "homepage": "https://github.com/ymauray/scrubx",
+              "architecture": {
+                  "64bit": {
+                      "url": f"https://github.com/ymauray/scrubx/releases/download/v{version}/scrubx-win-x64.zip",
+                      "hash": f"sha256:{os.environ['WIN_SHA']}",
+                  }
+              },
+              "bin": [["Scrubx.Cli.exe", "scrubx"]],
+          }
+          open("scrubx.json", "w").write(json.dumps(manifest, indent=4) + "\n")
+          PYEOF
+
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git add scrubx.json
+          git diff --staged --quiet || git commit -m "bump scrubx to ${VERSION}"
+          git push

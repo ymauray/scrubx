@@ -106,13 +106,40 @@ tests/Scrubx.Tests/ Tests xUnit
 deploy/             Exemples de config pour la mise en production (nginx, systemd)
 ```
 
+## Intégration continue et releases
+
+Deux workflows GitHub Actions (`.github/workflows/`) :
+
+- **`tests.yml`** — exécute `dotnet test` à chaque PR vers `main` et à
+  chaque push sur `main`. La branche `main` est protégée : ce check doit
+  passer avant de pouvoir merger une PR (y compris pour les
+  administrateurs du dépôt).
+- **`release.yml`** — build les trois applications distribuables
+  (`Scrubx.Cli` en `osx-arm64`/`win-x64`/`linux-x64`, `Scrubx.Web` en
+  `linux-x64` self-contained, `Scrubx.Desktop` en `win-x64` sur
+  `windows-latest`) et publie les archives comme assets d'une [GitHub
+  Release](https://github.com/ymauray/scrubx/releases). Déclenché :
+  - automatiquement en poussant un tag `vX.Y.Z` (`git tag -a v1.2.3 -m "v1.2.3" && git push origin v1.2.3`) ;
+  - manuellement depuis l'onglet **Actions** → **Release** → **Run
+    workflow**, en choisissant un tag existant dans le sélecteur de ref.
+
+Le dépôt est public — nécessaire pour que la protection de branche
+(payante sur un dépôt privé en plan gratuit) soit disponible.
+
 ## Déploiement en production
 
 L'application Web est prévue pour tourner **derrière un reverse proxy
 nginx**, avec Kestrel qui n'écoute qu'en local (`127.0.0.1:5099`) — jamais
 exposé directement sur le réseau.
 
-### 1. Publier un binaire standalone
+### 1. Récupérer un binaire standalone
+
+Le plus simple : télécharger `Scrubx.Web-linux-x64.zip` depuis la
+[dernière release GitHub](https://github.com/ymauray/scrubx/releases/latest)
+(généré automatiquement, voir « Intégration continue et releases »
+ci-dessous) et le décompresser.
+
+Ou publier manuellement :
 
 ```bash
 dotnet publish src/Scrubx.Web/Scrubx.Web.csproj -c Release -r linux-x64 --self-contained
@@ -122,9 +149,9 @@ Le résultat est dans
 `src/Scrubx.Web/bin/Release/net10.0/linux-x64/publish/`. Copiez ce dossier
 sur le serveur, par exemple dans `/opt/scrubx-web/`.
 
-> Note : `publish.sh`/`publish.ps1` à la racine ne publient aujourd'hui que
-> `Scrubx.Cli`. Pour `Scrubx.Web`, utilisez la commande `dotnet publish`
-> ci-dessus (ou étendez ces scripts si vous voulez automatiser les deux).
+> Note : `publish.sh`/`publish.ps1` à la racine ne publient que
+> `Scrubx.Cli`. Pour `Scrubx.Web`, utilisez la release GitHub ou la
+> commande `dotnet publish` ci-dessus.
 
 ### 2. Exécuter le service (systemd)
 

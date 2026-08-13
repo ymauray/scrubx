@@ -13,26 +13,30 @@
 </header>
 
 <main>
-  <form id="upload-form">
-    <section class="panel">
-      <h2>1. Document à analyser</h2>
-      <input type="file" id="file-input" accept=".docx" required>
-      <p class="hint">Le document téléversé n'est conservé sur le serveur que le temps nécessaire à son analyse, après quoi il est irrémédiablement effacé.</p>
-    </section>
+  <div class="col">
+    <form id="upload-form">
+      <section class="panel">
+        <h2>1. Document à analyser</h2>
+        <input type="file" id="file-input" accept=".docx" required>
+        <p class="hint">Le document téléversé n'est conservé sur le serveur que le temps nécessaire à son analyse, après quoi il est irrémédiablement effacé.</p>
+      </section>
 
-    <section class="panel">
-      <h2>2. Règles à appliquer</h2>
-      <div id="rules-list" class="rules-list">Chargement des règles...</div>
-      <div class="actions">
-        <button type="submit" id="submit-btn">Analyser</button>
-      </div>
-    </section>
-  </form>
+      <section class="panel">
+        <h2>2. Règles à appliquer</h2>
+        <div id="rules-list" class="rules-list">Chargement des règles...</div>
+        <div class="actions">
+          <button type="submit" id="submit-btn">Analyser</button>
+        </div>
+      </section>
+    </form>
+  </div>
 
-  <section class="panel">
-    <h2>3. Rapport</h2>
-    <div id="report">Aucune analyse effectuée pour l'instant.</div>
-  </section>
+  <div class="col col-report">
+    <section class="panel">
+      <h2>3. Rapport</h2>
+      <div id="report">Aucune analyse effectuée pour l'instant.</div>
+    </section>
+  </div>
 </main>
 
 <script src="app.js"></script>

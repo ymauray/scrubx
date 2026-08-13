@@ -4,12 +4,18 @@ Outil de vérification de mise en forme typographique de documents Word
 (`.docx`) : apostrophes droites, tirets invalides, espaces insécables
 manquantes, styles de paragraphe non autorisés, sauts de page, etc.
 
-Disponible sous deux formes, partageant la même logique de validation
+Disponible sous plusieurs formes, partageant la même logique de validation
 (`src/Scrubx.Core`) :
 
 - **`Scrubx.Cli`** — outil en ligne de commande.
 - **`Scrubx.Web`** — API + interface Web permettant de téléverser un
   document, de choisir les règles à appliquer, et d'obtenir le rapport.
+- **`Scrubx.Desktop`** — application Windows native (WPF + WebView2) : même
+  interface que `Scrubx.Web`, mais servie en local depuis un exécutable
+  unique, sans serveur ni réseau à configurer.
+
+Portage macOS (`Scrubx.Mac`) envisagé mais non démarré — voir
+[`SPECIFICATION.md`](SPECIFICATION.md) §8 pour le plan de reprise.
 
 Voir [`SPECIFICATION.md`](SPECIFICATION.md) pour le détail des règles et de
 l'architecture.
@@ -55,14 +61,39 @@ ASPNETCORE_URLS=http://127.0.0.1:5000 dotnet run --project src/Scrubx.Web
 ```
 
 Le frontend (`src/Scrubx.Web/wwwroot/`) est statique (HTML/CSS/JS vanilla,
-sans étape de build) et servi directement par ASP.NET Core.
+sans étape de build) et servi directement par ASP.NET Core. Il est
+partagé tel quel avec `Scrubx.Desktop`.
+
+### Application desktop (Windows)
+
+```bash
+dotnet run --project src/Scrubx.Desktop
+```
+
+Ouvre directement une fenêtre avec l'interface (pas besoin de navigateur).
+Le serveur ASP.NET Core tourne en mémoire sur un port local dynamique — rien
+à configurer.
+
+Pour produire un exécutable autonome à distribuer :
+
+```bash
+dotnet publish src/Scrubx.Desktop/Scrubx.Desktop.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true
+```
+
+Le résultat (`Scrubx.Desktop.exe` + quelques DLL natives + `wwwroot/`) se
+trouve dans
+`src/Scrubx.Desktop/bin/Release/net10.0-windows/win-x64/publish/`.
+Nécessite le WebView2 Runtime (déjà présent avec Edge sur Windows 10/11
+dans la quasi-totalité des cas). Détails et pièges rencontrés :
+[`SPECIFICATION.md`](SPECIFICATION.md) §7.
 
 ### Structure du dépôt
 
 ```
-src/Scrubx.Core/   Logique de validation partagée (DocxValidator, RuleCatalog)
+src/Scrubx.Core/    Logique de validation partagée (DocxValidator, RuleCatalog)
 src/Scrubx.Cli/     Application en ligne de commande
-src/Scrubx.Web/     API ASP.NET Core + frontend statique (wwwroot/)
+src/Scrubx.Web/     API ASP.NET Core (WebAppFactory) + frontend statique (wwwroot/)
+src/Scrubx.Desktop/ Application Windows native (WPF + WebView2), héberge Scrubx.Web en process
 tests/Scrubx.Tests/ Tests xUnit
 deploy/             Exemples de config pour la mise en production (nginx, systemd)
 ```

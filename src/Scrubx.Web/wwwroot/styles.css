@@ -21,7 +21,7 @@ body {
 
 header {
   padding: 2rem 1.5rem 1rem;
-  max-width: 760px;
+  max-width: 1100px;
   margin: 0 auto;
 }
 
@@ -29,12 +29,34 @@ header h1 { margin: 0 0 0.25rem; }
 header p { margin: 0; color: var(--muted); }
 
 main {
-  max-width: 760px;
+  max-width: 1100px;
   margin: 0 auto;
   padding: 0 1.5rem 3rem;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.25rem;
+  align-items: start;
+}
+
+.col {
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
+}
+
+.col-report {
+  position: sticky;
+  top: 1.5rem;
+}
+
+@media (max-width: 800px) {
+  main {
+    grid-template-columns: 1fr;
+  }
+
+  .col-report {
+    position: static;
+  }
 }
 
 .panel {

@@ -57,21 +57,24 @@ tirets invalides en tête de liste.
 
 ### 3.3 Règles implémentées (par paragraphe, sur le texte concaténé des `w:t`)
 
-| RuleName | Type | Description |
-|---|---|---|
-| `ApostropheDroite` | erreur | Apostrophe droite `'` détectée (attendu : `’`) |
-| `GuillemetDroit` | erreur | Guillemet droit `"` détecté (attendu : `«`/`»`) |
-| `TiretDebutInvalide` | erreur | Paragraphe/puce commençant par `-` ou `–` (attendu : `—`) |
-| `EspaceInsecableManquante` | erreur | `—` en début de ligne non suivi d'une espace insécable (` ` ou ` `) |
-| `EspaceInsecablePonctuation` | erreur | Espace insécable manquante avant `!` ou `?` |
-| `EspaceGuillemet` | erreur | Espace insécable manquante autour de `«`/`»` |
-| `EspaceFinParagraphe` | erreur | Paragraphe se terminant par un espace/tabulation |
-| `DoubleEspace` | erreur | 2+ espaces consécutives (standard, insécable, ou fine, mélangeables) |
-| `StyleParagrapheInvalide` | erreur | Style de paragraphe hors de `Normal`/`Titre1`/`Ellipse` (uniquement dans `word/document.xml`) |
-| `StyleTitre1Manquant` | erreur | Aucun paragraphe `Titre1` dans tout le document (vérif. globale, une seule fois) |
-| `SautDePageDetecte` | erreur | Saut de page manuel (`w:br w:type="page"`) ou `w:pageBreakBefore` |
-| `VirguleAvantEt` | avertissement | Virgule juste avant "et" (`,\s*et\b`, insensible à la casse) |
-| `LectureFichier` / `LectureDocument` | erreur | Erreur d'E/S ou de parsing XML (try/catch englobant) |
+Chaque règle possède un `Code` court (`RuleCatalog.cs`), utilisé par la CLI
+pour les désactiver individuellement (`-i/--ignore`, voir §4).
+
+| RuleName | Code | Type | Description |
+|---|---|---|---|
+| `ApostropheDroite` | `APOS` | erreur | Apostrophe droite `'` détectée (attendu : `’`) |
+| `GuillemetDroit` | `GDROIT` | erreur | Guillemet droit `"` détecté (attendu : `«`/`»`) |
+| `TiretDebutInvalide` | `TIRET` | erreur | Paragraphe/puce commençant par `-` ou `–` (attendu : `—`) |
+| `EspaceInsecableManquante` | `EIMANQ` | erreur | `—` en début de ligne non suivi d'une espace insécable (` ` ou ` `) |
+| `EspaceInsecablePonctuation` | `EIPONC` | erreur | Espace insécable manquante avant `!` ou `?` |
+| `EspaceGuillemet` | `EGUIL` | erreur | Espace insécable manquante autour de `«`/`»` |
+| `EspaceFinParagraphe` | `EFINPAR` | erreur | Paragraphe se terminant par un espace/tabulation |
+| `DoubleEspace` | `DESPACE` | erreur | 2+ espaces consécutives (standard, insécable, ou fine, mélangeables) |
+| `StyleParagrapheInvalide` | `STYLEINV` | erreur | Style de paragraphe hors de `Normal`/`Titre1`/`Ellipse` (uniquement dans `word/document.xml`) |
+| `StyleTitre1Manquant` | `TITRE1` | erreur | Aucun paragraphe `Titre1` dans tout le document (vérif. globale, une seule fois) |
+| `SautDePageDetecte` | `SAUTPAGE` | erreur | Saut de page manuel (`w:br w:type="page"`) ou `w:pageBreakBefore` |
+| `VirguleAvantEt` | `VIRGET` | avertissement | Virgule juste avant "et" (`,\s*et\b`, insensible à la casse) |
+| `LectureFichier` / `LectureDocument` | — | erreur | Erreur d'E/S ou de parsing XML (try/catch englobant), non désactivable, sans code |
 
 Notes d'implémentation notables :
 - Les vérifications de style et `StyleTitre1Manquant` **ne s'appliquent
@@ -92,14 +95,21 @@ affiche le `Context` de chaque occurrence individuelle.
 ## 4. CLI
 
 ```
-Scrubx.Cli -i|--input <fichier.docx> [-v|--verbose] [-w|--warning]
+Scrubx.Cli <fichier.docx> [-v|--verbose] [-w|--warning] [-i|--ignore <code>[,<code>...]]
+Scrubx.Cli -r|--show-rules
 Scrubx.Cli -h|--help
 ```
 
-- `-i/--input` (requis) : chemin du fichier `.docx`.
+- `<fichier.docx>` (requis, argument positionnel) : chemin du fichier à
+  analyser. Un seul argument positionnel accepté (erreur sinon).
 - `-v/--verbose` : affiche le contexte détaillé de chaque occurrence.
 - `-w/--warning` : affiche le détail des avertissements (sinon juste le
   titre groupé, sans compteur/contexte).
+- `-i/--ignore <code>[,<code>...]` : désactive une ou plusieurs règles par
+  leur `Code` (voir §3.3), répétable — les valeurs de plusieurs occurrences
+  s'accumulent (union). Code inconnu → erreur (code de sortie 1).
+- `-r/--show-rules` : affiche la liste des règles groupées par thème
+  (`CODE  Titre`) puis quitte (code 0), sans requérir de fichier.
 - `-h/--help` : affiche l'usage et quitte (code 0).
 
 ### Codes de sortie

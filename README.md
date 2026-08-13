@@ -38,8 +38,10 @@ dotnet test
 ### CLI
 
 ```bash
-dotnet run --project src/Scrubx.Cli -- -i mon-document.docx
-dotnet run --project src/Scrubx.Cli -- -i mon-document.docx -v -w   # verbose + avertissements détaillés
+dotnet run --project src/Scrubx.Cli -- mon-document.docx
+dotnet run --project src/Scrubx.Cli -- mon-document.docx -v -w   # verbose + avertissements détaillés
+dotnet run --project src/Scrubx.Cli -- mon-document.docx -i VIRGET,STYLEINV   # ignorer des règles par leur code
+dotnet run --project src/Scrubx.Cli -- --show-rules   # lister les codes de règles disponibles
 dotnet run --project src/Scrubx.Cli -- --help
 ```
 

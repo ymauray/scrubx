@@ -97,6 +97,7 @@ affiche le `Context` de chaque occurrence individuelle.
 ```
 Scrubx.Cli <fichier.docx> [-v|--verbose] [-w|--warning] [-i|--ignore <code>[,<code>...]]
 Scrubx.Cli -r|--show-rules
+Scrubx.Cli -c|--create-config
 Scrubx.Cli -h|--help
 ```
 
@@ -107,16 +108,43 @@ Scrubx.Cli -h|--help
   titre groupé, sans compteur/contexte).
 - `-i/--ignore <code>[,<code>...]` : désactive une ou plusieurs règles par
   leur `Code` (voir §3.3), répétable — les valeurs de plusieurs occurrences
-  s'accumulent (union). Code inconnu → erreur (code de sortie 1).
+  s'accumulent (union). Code inconnu → erreur (code de sortie 1). Surcharge
+  toujours `scrubx.json` (voir ci-dessous) : une règle ignorée en CLI reste
+  ignorée même si le fichier de config la marque activée.
 - `-r/--show-rules` : affiche la liste des règles groupées par thème
   (`CODE  Titre`) puis quitte (code 0), sans requérir de fichier.
+- `-c/--create-config` : crée `scrubx.json` (règles activées par défaut) ou,
+  s'il existe déjà, y ajoute uniquement les codes du catalogue absents —
+  sans jamais modifier les valeurs déjà présentes. Puis quitte (code 0,
+  ou 1 si le fichier existant n'est pas un JSON valide), sans requérir de
+  fichier `.docx`.
 - `-h/--help` : affiche l'usage et quitte (code 0).
+
+### Fichier de configuration (`scrubx.json`)
+
+Optionnel. Généré par `-c/--create-config` (`src/Scrubx.Cli/RuleConfig.cs`),
+recherché dans le répertoire courant au lancement. Format JSON simple,
+clé = `Code` de règle (§3.3), valeur = booléen :
+
+```json
+{ "APOS": true, "GDROIT": true, "VIRGET": false, ... }
+```
+
+- Absent : toutes les règles activées par défaut (comportement inchangé).
+- Présent : un code absent du fichier reste activé par défaut ; un code du
+  fichier inconnu du catalogue est silencieusement ignoré (permet de
+  renommer/supprimer une règle sans casser un fichier existant).
+- Invalide (JSON malformé, ou valeur non booléenne pour un code connu) :
+  erreur explicite, code de sortie 1, avant toute analyse.
+- Ordre de résolution : `scrubx.json` définit l'état de base, puis
+  `-i/--ignore` s'applique par-dessus (peut seulement désactiver
+  davantage, jamais réactiver une règle désactivée par le fichier).
 
 ### Codes de sortie
 | Code | Signification |
 |---|---|
-| 0 | Aide affichée, OU document valide (avec ou sans avertissements) |
-| 1 | Erreur d'arguments CLI |
+| 0 | Aide/règles/config affichées ou créées, OU document valide (avec ou sans avertissements) |
+| 1 | Erreur d'arguments CLI, ou `scrubx.json` invalide |
 | 2 | Fichier introuvable |
 | 3 | Extension ≠ `.docx` |
 | 4 | Erreurs de validation détectées |

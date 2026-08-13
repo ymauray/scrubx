@@ -40,7 +40,7 @@ jobs:
           done
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: build-cli-web
           path: "*.zip"
@@ -64,7 +64,7 @@ jobs:
         run: Compress-Archive -Path artifacts/Scrubx.Desktop-win-x64/* -DestinationPath Scrubx.Desktop-win-x64.zip
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: build-desktop
           path: "*.zip"

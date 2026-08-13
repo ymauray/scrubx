@@ -57,21 +57,24 @@ tirets invalides en tête de liste.
 
 ### 3.3 Règles implémentées (par paragraphe, sur le texte concaténé des `w:t`)
 
-| RuleName | Type | Description |
-|---|---|---|
-| `ApostropheDroite` | erreur | Apostrophe droite `'` détectée (attendu : `’`) |
-| `GuillemetDroit` | erreur | Guillemet droit `"` détecté (attendu : `«`/`»`) |
-| `TiretDebutInvalide` | erreur | Paragraphe/puce commençant par `-` ou `–` (attendu : `—`) |
-| `EspaceInsecableManquante` | erreur | `—` en début de ligne non suivi d'une espace insécable (` ` ou ` `) |
-| `EspaceInsecablePonctuation` | erreur | Espace insécable manquante avant `!` ou `?` |
-| `EspaceGuillemet` | erreur | Espace insécable manquante autour de `«`/`»` |
-| `EspaceFinParagraphe` | erreur | Paragraphe se terminant par un espace/tabulation |
-| `DoubleEspace` | erreur | 2+ espaces consécutives (standard, insécable, ou fine, mélangeables) |
-| `StyleParagrapheInvalide` | erreur | Style de paragraphe hors de `Normal`/`Titre1`/`Ellipse` (uniquement dans `word/document.xml`) |
-| `StyleTitre1Manquant` | erreur | Aucun paragraphe `Titre1` dans tout le document (vérif. globale, une seule fois) |
-| `SautDePageDetecte` | erreur | Saut de page manuel (`w:br w:type="page"`) ou `w:pageBreakBefore` |
-| `VirguleAvantEt` | avertissement | Virgule juste avant "et" (`,\s*et\b`, insensible à la casse) |
-| `LectureFichier` / `LectureDocument` | erreur | Erreur d'E/S ou de parsing XML (try/catch englobant) |
+Chaque règle possède un `Code` court (`RuleCatalog.cs`), utilisé par la CLI
+pour les désactiver individuellement (`-i/--ignore`, voir §4).
+
+| RuleName | Code | Type | Description |
+|---|---|---|---|
+| `ApostropheDroite` | `APOS` | erreur | Apostrophe droite `'` détectée (attendu : `’`) |
+| `GuillemetDroit` | `GDROIT` | erreur | Guillemet droit `"` détecté (attendu : `«`/`»`) |
+| `TiretDebutInvalide` | `TIRET` | erreur | Paragraphe/puce commençant par `-` ou `–` (attendu : `—`) |
+| `EspaceInsecableManquante` | `EIMANQ` | erreur | `—` en début de ligne non suivi d'une espace insécable (` ` ou ` `) |
+| `EspaceInsecablePonctuation` | `EIPONC` | erreur | Espace insécable manquante avant `!` ou `?` |
+| `EspaceGuillemet` | `EGUIL` | erreur | Espace insécable manquante autour de `«`/`»` |
+| `EspaceFinParagraphe` | `EFINPAR` | erreur | Paragraphe se terminant par un espace/tabulation |
+| `DoubleEspace` | `DESPACE` | erreur | 2+ espaces consécutives (standard, insécable, ou fine, mélangeables) |
+| `StyleParagrapheInvalide` | `STYLEINV` | erreur | Style de paragraphe hors de `Normal`/`Titre1`/`Ellipse` (uniquement dans `word/document.xml`) |
+| `StyleTitre1Manquant` | `TITRE1` | erreur | Aucun paragraphe `Titre1` dans tout le document (vérif. globale, une seule fois) |
+| `SautDePageDetecte` | `SAUTPAGE` | erreur | Saut de page manuel (`w:br w:type="page"`) ou `w:pageBreakBefore` |
+| `VirguleAvantEt` | `VIRGET` | avertissement | Virgule juste avant "et" (`,\s*et\b`, insensible à la casse) |
+| `LectureFichier` / `LectureDocument` | — | erreur | Erreur d'E/S ou de parsing XML (try/catch englobant), non désactivable, sans code |
 
 Notes d'implémentation notables :
 - Les vérifications de style et `StyleTitre1Manquant` **ne s'appliquent
@@ -92,21 +95,63 @@ affiche le `Context` de chaque occurrence individuelle.
 ## 4. CLI
 
 ```
-Scrubx.Cli -i|--input <fichier.docx> [-v|--verbose] [-w|--warning]
+Scrubx.Cli <fichier.docx> [-v|--verbose] [-w|--warning] [-i|--ignore <code>[,<code>...]] [-f|--force <code>[,<code>...]]
+Scrubx.Cli -r|--show-rules
+Scrubx.Cli -c|--create-config
 Scrubx.Cli -h|--help
 ```
 
-- `-i/--input` (requis) : chemin du fichier `.docx`.
+- `<fichier.docx>` (requis, argument positionnel) : chemin du fichier à
+  analyser. Un seul argument positionnel accepté (erreur sinon).
 - `-v/--verbose` : affiche le contexte détaillé de chaque occurrence.
 - `-w/--warning` : affiche le détail des avertissements (sinon juste le
   titre groupé, sans compteur/contexte).
+- `-i/--ignore <code>[,<code>...]` : désactive une ou plusieurs règles par
+  leur `Code` (voir §3.3), répétable — les valeurs de plusieurs occurrences
+  s'accumulent (union). Code inconnu → erreur (code de sortie 1). Surcharge
+  `scrubx.json` (voir ci-dessous) : une règle ignorée en CLI reste ignorée
+  même si le fichier de config la marque activée — sauf si `-f/--force` la
+  cible aussi (voir plus bas).
+- `-f/--force <code>[,<code>...]` : force l'exécution d'une ou plusieurs
+  règles même si `scrubx.json` les marque désactivées. Même syntaxe que
+  `-i/--ignore` (répétable, codes séparés par virgules, code inconnu →
+  erreur). Si un même code apparaît dans `-i` et `-f`, **`-f` l'emporte**
+  (règle activée).
+- `-r/--show-rules` : affiche la liste des règles groupées par thème
+  (`CODE  Titre`) puis quitte (code 0), sans requérir de fichier.
+- `-c/--create-config` : crée `scrubx.json` (règles activées par défaut) ou,
+  s'il existe déjà, y ajoute uniquement les codes du catalogue absents —
+  sans jamais modifier les valeurs déjà présentes. Puis quitte (code 0,
+  ou 1 si le fichier existant n'est pas un JSON valide), sans requérir de
+  fichier `.docx`.
 - `-h/--help` : affiche l'usage et quitte (code 0).
+
+### Fichier de configuration (`scrubx.json`)
+
+Optionnel. Généré par `-c/--create-config` (`src/Scrubx.Cli/RuleConfig.cs`),
+recherché dans le répertoire courant au lancement. Format JSON simple,
+clé = `Code` de règle (§3.3), valeur = booléen :
+
+```json
+{ "APOS": true, "GDROIT": true, "VIRGET": false, ... }
+```
+
+- Absent : toutes les règles activées par défaut (comportement inchangé).
+- Présent : un code absent du fichier reste activé par défaut ; un code du
+  fichier inconnu du catalogue est silencieusement ignoré (permet de
+  renommer/supprimer une règle sans casser un fichier existant).
+- Invalide (JSON malformé, ou valeur non booléenne pour un code connu) :
+  erreur explicite, code de sortie 1, avant toute analyse.
+- Ordre de résolution : `scrubx.json` définit l'état de base, puis
+  `-i/--ignore` désactive par-dessus, puis `-f/--force` réactive par-dessus
+  le résultat (donc `-f` l'emporte sur `-i` en cas de code commun aux deux
+  options).
 
 ### Codes de sortie
 | Code | Signification |
 |---|---|
-| 0 | Aide affichée, OU document valide (avec ou sans avertissements) |
-| 1 | Erreur d'arguments CLI |
+| 0 | Aide/règles/config affichées ou créées, OU document valide (avec ou sans avertissements) |
+| 1 | Erreur d'arguments CLI, ou `scrubx.json` invalide |
 | 2 | Fichier introuvable |
 | 3 | Extension ≠ `.docx` |
 | 4 | Erreurs de validation détectées |
@@ -142,10 +187,13 @@ défaut par le template — à vérifier/nettoyer si vide ou obsolète.
    silencieusement (pas d'erreur), donc les listes à puces ne sont alors
    plus vérifiées pour `TiretDebutInvalide` — comportement à confirmer
    comme voulu.
-6. **Pas de configuration externe** : les règles (styles autorisés, etc.)
-   sont codées en dur dans `DocxValidator.cs`. Si plusieurs profils de
+6. **Pas de configuration externe pour les paramètres des règles** : les
+   valeurs internes (ex. styles autorisés `Normal`/`Titre1`/`Ellipse`)
+   restent codées en dur dans `DocxValidator.cs`. Si plusieurs profils de
    validation sont nécessaires (ex. gabarits différents), il faudra
-   externaliser ces constantes (fichier de config ou options CLI).
+   externaliser ces constantes (fichier de config ou options CLI). À
+   distinguer de la *sélection* des règles (lesquelles s'exécutent), qui
+   est elle déjà externalisable côté CLI via `scrubx.json` (§4).
 7. **`Scrubx.Cli-linux-x64`** : un binaire compilé est présent à la racine
    du dépôt (fichier non suivi par git au moment de l'audit) — à vérifier
    s'il doit être committé, ignoré, ou publié en release séparément.

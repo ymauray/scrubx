@@ -38,10 +38,18 @@ dotnet test
 ### CLI
 
 ```bash
-dotnet run --project src/Scrubx.Cli -- -i mon-document.docx
-dotnet run --project src/Scrubx.Cli -- -i mon-document.docx -v -w   # verbose + avertissements détaillés
+dotnet run --project src/Scrubx.Cli -- mon-document.docx
+dotnet run --project src/Scrubx.Cli -- mon-document.docx -v -w   # verbose + avertissements détaillés
+dotnet run --project src/Scrubx.Cli -- mon-document.docx -i VIRGET,STYLEINV   # ignorer des règles par leur code
+dotnet run --project src/Scrubx.Cli -- mon-document.docx -f VIRGET   # forcer une règle désactivée dans scrubx.json
+dotnet run --project src/Scrubx.Cli -- --show-rules   # lister les codes de règles disponibles
+dotnet run --project src/Scrubx.Cli -- --create-config   # créer/compléter scrubx.json (règles activées par défaut)
 dotnet run --project src/Scrubx.Cli -- --help
 ```
+
+`scrubx.json`, s'il existe dans le répertoire courant, définit l'état
+activé/désactivé de chaque règle (par son code) au lancement ; `-i/--ignore`
+s'applique ensuite par-dessus. Détails : [`SPECIFICATION.md`](SPECIFICATION.md) §4.
 
 ### Application Web
 

@@ -5,6 +5,7 @@ public class CommandLineOptions
     public string? InputPath { get; set; }
     public bool ShowHelp { get; set; }
     public bool ShowRules { get; set; }
+    public bool CreateConfig { get; set; }
     public string? ErrorMessage { get; set; }
     public bool Verbose { get; set; }
     public bool ShowWarnings { get; set; }
@@ -40,6 +41,10 @@ public static class ArgumentParser
             {
                 options.ShowRules = true;
             }
+            else if (arg == "-c" || arg == "--create-config")
+            {
+                options.CreateConfig = true;
+            }
             else if (arg == "-v" || arg == "--verbose")
             {
                 options.Verbose = true;
@@ -64,7 +69,7 @@ public static class ArgumentParser
             }
         }
 
-        if (!options.ShowHelp && !options.ShowRules && string.IsNullOrEmpty(options.InputPath))
+        if (!options.ShowHelp && !options.ShowRules && !options.CreateConfig && string.IsNullOrEmpty(options.InputPath))
         {
             options.ErrorMessage = "Erreur : Le fichier .docx à analyser est requis.";
         }

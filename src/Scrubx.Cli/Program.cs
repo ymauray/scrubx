@@ -18,13 +18,53 @@ if (options.ShowHelp || !string.IsNullOrEmpty(options.ErrorMessage))
     return !string.IsNullOrEmpty(options.ErrorMessage) ? 1 : 0;
 }
 
+if (options.CreateConfig)
+{
+    var existedBefore = File.Exists(RuleConfig.DefaultFileName);
+    var added = RuleConfig.CreateOrUpdate(RuleConfig.DefaultFileName);
+
+    if (added == null)
+    {
+        Console.ForegroundColor = ConsoleColor.Red;
+        Console.WriteLine($"Erreur : Le fichier '{RuleConfig.DefaultFileName}' existe mais n'est pas un JSON valide.");
+        Console.ResetColor();
+        return 1;
+    }
+
+    Console.ForegroundColor = ConsoleColor.Green;
+    if (!existedBefore)
+    {
+        Console.WriteLine($"Fichier '{RuleConfig.DefaultFileName}' créé avec {added} règle(s) activée(s).");
+    }
+    else if (added > 0)
+    {
+        Console.WriteLine($"Fichier '{RuleConfig.DefaultFileName}' mis à jour ({added} règle(s) ajoutée(s)).");
+    }
+    else
+    {
+        Console.WriteLine($"Fichier '{RuleConfig.DefaultFileName}' déjà à jour (aucune règle manquante).");
+    }
+    Console.ResetColor();
+    return 0;
+}
+
 if (options.ShowRules)
 {
     PrintRules();
     return 0;
 }
 
-// Résolution des codes de règles à ignorer
+// Règles activées/désactivées par scrubx.json (s'il existe), sinon toutes activées par défaut
+var configEnabledRules = RuleConfig.TryLoadEnabledRuleNames(RuleConfig.DefaultFileName, out var configErrorMessage);
+if (configEnabledRules == null)
+{
+    Console.ForegroundColor = ConsoleColor.Red;
+    Console.WriteLine(configErrorMessage);
+    Console.ResetColor();
+    return 1;
+}
+
+// Résolution des codes de règles à ignorer (surcharge la config, cf. -i/--ignore)
 var ignoredRuleNames = new System.Collections.Generic.HashSet<string>();
 foreach (var code in options.IgnoredRuleCodes)
 {
@@ -38,7 +78,7 @@ foreach (var code in options.IgnoredRuleCodes)
     }
     ignoredRuleNames.Add(rule.RuleName);
 }
-var enabledRules = RuleCatalog.AllRuleNames.Except(ignoredRuleNames).ToHashSet();
+var enabledRules = configEnabledRules.Except(ignoredRuleNames).ToHashSet();
 
 // Validation of file existence and extension
 var fileInfo = new FileInfo(options.InputPath!);
@@ -166,6 +206,7 @@ static void PrintUsage()
     Console.WriteLine("Utilisation :");
     Console.WriteLine("  Scrubx.Cli <fichier.docx> [-v|--verbose] [-w|--warning] [-i|--ignore <code>[,<code>...]]");
     Console.WriteLine("  Scrubx.Cli -r|--show-rules");
+    Console.WriteLine("  Scrubx.Cli -c|--create-config");
     Console.WriteLine("  Scrubx.Cli -h|--help");
 }
 

@@ -177,6 +177,35 @@ public class CommandLineTests
     }
 
     [Fact]
+    public void Parse_WithCreateConfigShortOption_ReturnsCreateConfigTrue()
+    {
+        // Arrange
+        string[] args = ["-c"];
+
+        // Act
+        var options = ArgumentParser.Parse(args);
+
+        // Assert
+        Assert.True(options.CreateConfig);
+        Assert.Null(options.ErrorMessage);
+        Assert.Null(options.InputPath);
+    }
+
+    [Fact]
+    public void Parse_WithCreateConfigLongOption_ReturnsCreateConfigTrue()
+    {
+        // Arrange
+        string[] args = ["--create-config"];
+
+        // Act
+        var options = ArgumentParser.Parse(args);
+
+        // Assert
+        Assert.True(options.CreateConfig);
+        Assert.Null(options.ErrorMessage);
+    }
+
+    [Fact]
     public void Parse_WithIgnoreOptionButNoValue_ReturnsErrorMessage()
     {
         // Arrange

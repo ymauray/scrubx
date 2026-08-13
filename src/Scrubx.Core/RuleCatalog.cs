@@ -42,4 +42,7 @@ public static class RuleCatalog
 
     public static RuleDefinition? GetByCode(string code) =>
         All.FirstOrDefault(r => string.Equals(r.Code, code, StringComparison.OrdinalIgnoreCase));
+
+    public static string? GetCode(string ruleName) =>
+        All.FirstOrDefault(r => r.RuleName == ruleName)?.Code;
 }

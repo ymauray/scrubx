@@ -72,7 +72,7 @@ if (errors.Any())
     Console.ForegroundColor = ConsoleColor.Red;
     Console.WriteLine("Des erreurs de validation ont été détectées :");
     Console.WriteLine();
-    DisplayGroupedIssues(errors, options.Verbose);
+    DisplayGroupedIssues(errors, options.Verbose, ConsoleColor.Red);
     Console.ResetColor();
 
     if (warnings.Any())
@@ -102,15 +102,25 @@ Console.WriteLine("Félicitations ! Le document est parfaitement valide.");
 Console.ResetColor();
 return 0;
 
-static void DisplayGroupedIssues(System.Collections.Generic.List<ValidationError> issues, bool verbose)
+static void DisplayGroupedIssues(System.Collections.Generic.List<ValidationError> issues, bool verbose, ConsoleColor lineColor)
 {
     var grouped = issues.GroupBy(e => e.RuleName);
     foreach (var group in grouped)
     {
         var title = RuleCatalog.GetTitle(group.Key);
+        var code = RuleCatalog.GetCode(group.Key);
         var count = group.Count();
-        Console.WriteLine($"* {title} ({count} occurrence{(count > 1 ? "s" : "")})");
-        
+
+        Console.Write("* ");
+        if (code != null)
+        {
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            Console.Write(code);
+            Console.ForegroundColor = lineColor;
+            Console.Write(" : ");
+        }
+        Console.WriteLine($"{title} ({count} occurrence{(count > 1 ? "s" : "")})");
+
         if (verbose)
         {
             foreach (var error in group)
@@ -128,7 +138,7 @@ static void DisplayWarnings(System.Collections.Generic.List<ValidationError> war
 {
     if (showWarnings)
     {
-        DisplayGroupedIssues(warnings, verbose);
+        DisplayGroupedIssues(warnings, verbose, ConsoleColor.Yellow);
     }
     else
     {
@@ -136,7 +146,17 @@ static void DisplayWarnings(System.Collections.Generic.List<ValidationError> war
         foreach (var group in grouped)
         {
             var title = RuleCatalog.GetTitle(group.Key);
-            Console.WriteLine($"* {title}");
+            var code = RuleCatalog.GetCode(group.Key);
+
+            Console.Write("* ");
+            if (code != null)
+            {
+                Console.ForegroundColor = ConsoleColor.Cyan;
+                Console.Write(code);
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.Write(" : ");
+            }
+            Console.WriteLine(title);
         }
     }
 }

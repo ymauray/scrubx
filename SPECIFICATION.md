@@ -152,3 +152,134 @@ défaut par le template — à vérifier/nettoyer si vide ou obsolète.
 8. **Localisation** : tous les messages sont en français, en dur dans le
    code (`Program.cs` et `DocxValidator.cs`). Pas d'abstraction i18n pour
    l'instant.
+
+## 7. Application desktop native (`Scrubx.Desktop`, Windows)
+
+### 7.1 Principe
+
+`Scrubx.Desktop` est une coquille WPF (`net10.0-windows`) qui héberge le
+même backend que `Scrubx.Web` (routes API + `wwwroot` statique)
+**en process**, via un contrôle WebView2 plein écran, sans exposer aucun
+port réseau externe :
+
+- Au chargement de la fenêtre (`MainWindow_Loaded`), l'appli construit et
+  démarre une `WebApplication` via `WebAppFactory.Create(...)` (voir
+  `src/Scrubx.Web/WebAppFactory.cs`), liée sur `http://127.0.0.1:0` (port
+  dynamique attribué par l'OS — jamais de port fixe, jamais de conflit
+  possible avec une instance `Scrubx.Web` déployée sur la même machine).
+- Le WebView2 (`Microsoft.Web.WebView2.Wpf`, package NuGet
+  `Microsoft.Web.WebView2`) navigue ensuite vers l'adresse réellement
+  attribuée (`app.Urls.First()`).
+- Aucun arrêt explicite du serveur à la fermeture de la fenêtre : le
+  process entier disparaît, ce qui suffit pour un hôte purement local
+  sans état persistant à nettoyer.
+
+### 7.2 Extraction de `WebAppFactory`
+
+`src/Scrubx.Web/Program.cs` a été réduit à deux lignes ; toute la
+logique (routes, fichiers statiques, `ForwardedHeaders`) vit dans
+`WebAppFactory.Create(string[] args, Action<WebApplicationBuilder>?
+configure = null)`, réutilisable par n'importe quel hôte .NET (Web,
+Desktop, ou un futur shell macOS). Point important :
+`ContentRootPath` y est fixé explicitement à `AppContext.BaseDirectory`
+(et non laissé au défaut basé sur le répertoire courant), car un hôte
+embarqué comme `Scrubx.Desktop` ne contrôle pas forcément son
+`CurrentDirectory` au démarrage.
+
+### 7.3 Pièges rencontrés (à anticiper pour tout nouveau shell, y compris macOS)
+
+1. **Propagation transitive des `Content` items via `ProjectReference`** :
+   quand `Scrubx.Desktop` référence `Scrubx.Web`, MSBuild recopie
+   automatiquement dans la sortie de `Scrubx.Desktop` tous les fichiers
+   `Content` de `Scrubx.Web` marqués `CopyToOutputDirectory` — y compris
+   `appsettings.json`, qui fixe `Kestrel:Endpoints:Http:Url` sur
+   `127.0.0.1:5099`. Cette config, chargée par `IConfiguration`, prend le
+   pas sur un simple `WebHost.UseUrls(...)` appelé en code. **Solution
+   retenue** : dans le `configure` passé à `WebAppFactory.Create`, écraser
+   directement la clé de configuration
+   (`builder.Configuration["Kestrel:Endpoints:Http:Url"] = "http://127.0.0.1:0"`,
+   voir `MainWindow.xaml.cs`) plutôt que de compter sur l'absence
+   d'`appsettings.json`.
+2. **`wwwroot` non propagé automatiquement** : contrairement à
+   `appsettings.json`, les fichiers de `wwwroot` (assets statiques du SDK
+   Web) ne se propagent pas vers un projet non-Web (WPF ici). Il faut les
+   inclure explicitement en `Content` dans le csproj du shell — voir le
+   bloc `<Content Include="..\Scrubx.Web\wwwroot\**">` dans
+   `Scrubx.Desktop.csproj`.
+3. **`UseUrls` seul est insuffisant** en présence d'un `appsettings.json`
+   comportant une section `Kestrel:Endpoints` (cf. point 1) : le message
+   de log `warn: ... Overriding address(es) '...'. Binding to endpoints
+   defined via IConfiguration...` en est le symptôme.
+
+### 7.4 Distribution
+
+```bash
+dotnet publish src/Scrubx.Desktop/Scrubx.Desktop.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true
+```
+
+Produit un dossier autonome (~160 Mo, WPF + .NET + ASP.NET Core
+embarqués) contenant `Scrubx.Desktop.exe` + quelques DLL natives non
+embarquables dans le single-file (`WebView2Loader.dll`,
+`D3DCompiler_47_cor3.dll`, etc.) + `wwwroot/`. Nécessite le WebView2
+Runtime, quasi toujours déjà présent avec Edge sur Windows 10/11 (sinon,
+prévoir le redistribuable Evergreen).
+
+## 8. Portage macOS (`Scrubx.Mac`) — non démarré, plan de reprise
+
+Décision prise le 2026-08-13 : reporté à plus tard, à développer et
+tester directement sur une machine macOS — impossible à faire depuis un
+environnement Windows (WPF ne cible que Windows, et la compilation Mac
+Catalyst nécessite un Mac avec Xcode).
+
+### 8.1 Approche recommandée : .NET MAUI, cible Mac Catalyst
+
+Même principe que `Scrubx.Desktop` (§7) : un nouveau shell
+**`Scrubx.Mac`** (ou nom au choix), projet MAUI ciblant uniquement
+`net10.0-maccatalyst`, avec :
+
+- Une fenêtre unique contenant un `WebView` (contrôle MAUI natif,
+  `Microsoft.Maui.Controls.WebView`) occupant tout l'espace — pas besoin
+  de barre d'adresse ni de chrome navigateur, comme pour `Scrubx.Desktop`.
+- Une référence de projet vers `Scrubx.Web` (donc transitivement
+  `Scrubx.Core`), exactement comme `Scrubx.Desktop`.
+- Un démarrage de serveur identique : appeler `WebAppFactory.Create(...)`
+  avec le même override de `Kestrel:Endpoints:Http:Url` sur un port
+  dynamique (`http://127.0.0.1:0`), déclenché depuis l'événement
+  d'apparition de la page/fenêtre (`OnAppearing` ou équivalent MAUI), puis
+  affecter l'URL réelle (`app.Urls.First()`) à `webView.Source`.
+- **Vérifier si les deux pièges du §7.3 se reproduisent** : la
+  propagation de `Content` via `ProjectReference` et l'inclusion de
+  `wwwroot` fonctionnent différemment sous le SDK MAUI (mécanisme
+  `MauiAsset` notamment) — à valider en pratique, pas à supposer
+  identique à WPF.
+
+### 8.2 Alternative : Avalonia (si Windows + macOS + Linux dans un seul projet shell)
+
+Avalonia permettrait un seul projet shell cross-platform au lieu de
+`Scrubx.Desktop` (WPF) + `Scrubx.Mac` (MAUI) séparés, via un contrôle
+WebView tiers (`Avalonia.WebView` ou un pack CEF). Non retenu pour
+l'instant : moins mature/officiel que MAUI pour la brique WebView, et
+impliquerait de réécrire le shell Windows déjà fonctionnel. À
+reconsidérer seulement si la duplication WPF/MAUI devient un problème
+réel (maintenance de deux shells).
+
+### 8.3 Prérequis pour reprendre ce travail
+
+- Un Mac avec Xcode installé (requis par la toolchain Mac Catalyst, même
+  en pilotant le build depuis .NET).
+- SDK .NET 10 avec la charge de travail MAUI :
+  `dotnet workload install maui`.
+- Aucun compte développeur Apple nécessaire pour build/run en local (non
+  signé), mais **requis pour toute distribution en dehors de la machine
+  de build** (signature de code + notarisation Apple, Gatekeeper) — à
+  anticiper si l'appli doit être partagée avec des beta-testeurs, comme
+  `Scrubx.Web` l'a été.
+
+### 8.4 Aucun portage nécessaire côté logique métier
+
+`Scrubx.Core`, `Scrubx.Cli` et `Scrubx.Web` (dont `WebAppFactory`) sont
+déjà 100 % multiplateformes (`net10.0`, aucune dépendance Windows) et
+tournent sans modification sur macOS/Linux — seul le shell UI natif
+manque pour macOS. Le travail de portage se limite donc au nouveau
+projet shell décrit en §8.1, sans toucher à `src/Scrubx.Core` ni
+`src/Scrubx.Web`.

@@ -95,7 +95,7 @@ affiche le `Context` de chaque occurrence individuelle.
 ## 4. CLI
 
 ```
-Scrubx.Cli <fichier.docx> [-v|--verbose] [-w|--warning] [-i|--ignore <code>[,<code>...]]
+Scrubx.Cli <fichier.docx> [-v|--verbose] [-w|--warning] [-i|--ignore <code>[,<code>...]] [-f|--force <code>[,<code>...]]
 Scrubx.Cli -r|--show-rules
 Scrubx.Cli -c|--create-config
 Scrubx.Cli -h|--help
@@ -109,8 +109,14 @@ Scrubx.Cli -h|--help
 - `-i/--ignore <code>[,<code>...]` : désactive une ou plusieurs règles par
   leur `Code` (voir §3.3), répétable — les valeurs de plusieurs occurrences
   s'accumulent (union). Code inconnu → erreur (code de sortie 1). Surcharge
-  toujours `scrubx.json` (voir ci-dessous) : une règle ignorée en CLI reste
-  ignorée même si le fichier de config la marque activée.
+  `scrubx.json` (voir ci-dessous) : une règle ignorée en CLI reste ignorée
+  même si le fichier de config la marque activée — sauf si `-f/--force` la
+  cible aussi (voir plus bas).
+- `-f/--force <code>[,<code>...]` : force l'exécution d'une ou plusieurs
+  règles même si `scrubx.json` les marque désactivées. Même syntaxe que
+  `-i/--ignore` (répétable, codes séparés par virgules, code inconnu →
+  erreur). Si un même code apparaît dans `-i` et `-f`, **`-f` l'emporte**
+  (règle activée).
 - `-r/--show-rules` : affiche la liste des règles groupées par thème
   (`CODE  Titre`) puis quitte (code 0), sans requérir de fichier.
 - `-c/--create-config` : crée `scrubx.json` (règles activées par défaut) ou,
@@ -137,8 +143,9 @@ clé = `Code` de règle (§3.3), valeur = booléen :
 - Invalide (JSON malformé, ou valeur non booléenne pour un code connu) :
   erreur explicite, code de sortie 1, avant toute analyse.
 - Ordre de résolution : `scrubx.json` définit l'état de base, puis
-  `-i/--ignore` s'applique par-dessus (peut seulement désactiver
-  davantage, jamais réactiver une règle désactivée par le fichier).
+  `-i/--ignore` désactive par-dessus, puis `-f/--force` réactive par-dessus
+  le résultat (donc `-f` l'emporte sur `-i` en cas de code commun aux deux
+  options).
 
 ### Codes de sortie
 | Code | Signification |

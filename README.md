@@ -41,6 +41,7 @@ dotnet test
 dotnet run --project src/Scrubx.Cli -- mon-document.docx
 dotnet run --project src/Scrubx.Cli -- mon-document.docx -v -w   # verbose + avertissements détaillés
 dotnet run --project src/Scrubx.Cli -- mon-document.docx -i VIRGET,STYLEINV   # ignorer des règles par leur code
+dotnet run --project src/Scrubx.Cli -- mon-document.docx -f VIRGET   # forcer une règle désactivée dans scrubx.json
 dotnet run --project src/Scrubx.Cli -- --show-rules   # lister les codes de règles disponibles
 dotnet run --project src/Scrubx.Cli -- --create-config   # créer/compléter scrubx.json (règles activées par défaut)
 dotnet run --project src/Scrubx.Cli -- --help

@@ -187,10 +187,13 @@ défaut par le template — à vérifier/nettoyer si vide ou obsolète.
    silencieusement (pas d'erreur), donc les listes à puces ne sont alors
    plus vérifiées pour `TiretDebutInvalide` — comportement à confirmer
    comme voulu.
-6. **Pas de configuration externe** : les règles (styles autorisés, etc.)
-   sont codées en dur dans `DocxValidator.cs`. Si plusieurs profils de
+6. **Pas de configuration externe pour les paramètres des règles** : les
+   valeurs internes (ex. styles autorisés `Normal`/`Titre1`/`Ellipse`)
+   restent codées en dur dans `DocxValidator.cs`. Si plusieurs profils de
    validation sont nécessaires (ex. gabarits différents), il faudra
-   externaliser ces constantes (fichier de config ou options CLI).
+   externaliser ces constantes (fichier de config ou options CLI). À
+   distinguer de la *sélection* des règles (lesquelles s'exécutent), qui
+   est elle déjà externalisable côté CLI via `scrubx.json` (§4).
 7. **`Scrubx.Cli-linux-x64`** : un binaire compilé est présent à la racine
    du dépôt (fichier non suivi par git au moment de l'audit) — à vérifier
    s'il doit être committé, ignoré, ou publié en release séparément.

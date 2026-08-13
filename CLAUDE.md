@@ -43,13 +43,16 @@ faire à cet unique endroit.
 - Avant de pousser une modification d'UI, la tester dans un navigateur
   (via les outils Claude in Chrome) — ne pas se fier uniquement à la
   compilation.
-- `dotnet test` doit passer (61 tests actuellement) avant tout commit
+- `dotnet test` doit passer (86 tests actuellement) avant tout commit
   touchant `Scrubx.Core`.
 
 ## État du projet
 
 - `Scrubx.Cli` et `Scrubx.Web` : en production, utilisés par des
-  beta-testeurs.
+  beta-testeurs. La CLI dispose désormais des mêmes possibilités de
+  désactivation de règles que le Web/Desktop, via des codes courts
+  (`-i/--ignore`, `-f/--force`, `-c/--create-config` → `scrubx.json`,
+  `-r/--show-rules`) — cf. `SPECIFICATION.md` §4.
 - `Scrubx.Desktop` : fonctionnel, publié en exécutable autonome Windows
   (`win-x64`, self-contained, single-file).
 - Portage macOS (`Scrubx.Mac`) : **non démarré**, à faire sur une machine

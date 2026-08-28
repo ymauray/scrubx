@@ -4,6 +4,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Security;
+using System.Text;
 using System.Xml.Linq;
 using Xunit;
 using Scrubx.Cli;
@@ -90,7 +91,9 @@ public class DocxReviewerTests
         string ruleName,
         int? paragraphIndex,
         string entryName = "word/document.xml",
-        bool isWarning = false) => new()
+        bool isWarning = false,
+        int? offset = null,
+        int length = 0) => new()
         {
             RuleName = ruleName,
             Message = "Message de test.",
@@ -98,7 +101,39 @@ public class DocxReviewerTests
             EntryName = entryName,
             ParagraphIndex = paragraphIndex,
             IsWarning = isWarning,
+            Offset = offset,
+            Length = length,
         };
+
+    /// <summary>Construit un paquet dont le corps de document est fourni tel quel.</summary>
+    private static MemoryStream CreatePackageWithBody(string bodyXml)
+    {
+        var documentXml = $"""
+            <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+            <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>{bodyXml}</w:body></w:document>
+            """;
+        return CreatePackage([], [("word/document.xml", documentXml)]);
+    }
+
+    /// <summary>Texte réellement encadré par les marques du commentaire donné.</summary>
+    private static string AnchoredText(XElement paragraph, int commentId)
+    {
+        var id = commentId.ToString();
+        var anchored = new StringBuilder();
+        bool inside = false;
+
+        foreach (var element in paragraph.Descendants())
+        {
+            if (element.Name == W + "commentRangeStart" && (string?)element.Attribute(W + "id") == id) inside = true;
+            else if (element.Name == W + "commentRangeEnd" && (string?)element.Attribute(W + "id") == id) inside = false;
+            else if (inside && element.Name == W + "t") anchored.Append(element.Value);
+        }
+
+        return anchored.ToString();
+    }
+
+    private static string ParagraphText(XElement paragraph) =>
+        string.Concat(paragraph.Descendants(W + "t").Select(t => t.Value));
 
     private static ValidationReport ReportWith(params ValidationError[] errors) =>
         new() { Errors = errors.ToList() };
@@ -431,6 +466,181 @@ public class DocxReviewerTests
         {
             File.Delete(path);
         }
+    }
+
+    [Fact]
+    public void Review_AnchorsExactlyTheReportedCharacters()
+    {
+        // Arrange — l'apostrophe droite est au milieu d'un run
+        using var source = CreatePackageWithBody("<w:p><w:r><w:t>C'est un bel été.</w:t></w:r></w:p>");
+        var report = ReportWith(Error("ApostropheDroite", 0, offset: 1, length: 1));
+
+        // Act
+        using var output = Review(source, report, out _);
+
+        // Assert
+        var paragraph = ReadPart(output, "word/document.xml").Descendants(W + "p").Single();
+        Assert.Equal("'", AnchoredText(paragraph, 1));
+    }
+
+    [Fact]
+    public void Review_SplittingRunsLeavesTheTextUnchanged()
+    {
+        // Arrange
+        using var source = CreatePackageWithBody("<w:p><w:r><w:t>C'est un bel été.</w:t></w:r></w:p>");
+        var report = ReportWith(Error("ApostropheDroite", 0, offset: 1, length: 1));
+
+        // Act
+        using var output = Review(source, report, out _);
+
+        // Assert
+        var paragraph = ReadPart(output, "word/document.xml").Descendants(W + "p").Single();
+        Assert.Equal("C'est un bel été.", ParagraphText(paragraph));
+        Assert.Equal(3, paragraph.Elements(W + "r").Count(r => r.Element(W + "t") != null));
+    }
+
+    [Fact]
+    public void Review_SplittingRunsCopiesTheirFormatting()
+    {
+        // Arrange — tout le paragraphe est en gras
+        using var source = CreatePackageWithBody(
+            "<w:p><w:r><w:rPr><w:b/></w:rPr><w:t>C'est un bel été.</w:t></w:r></w:p>");
+        var report = ReportWith(Error("ApostropheDroite", 0, offset: 1, length: 1));
+
+        // Act
+        using var output = Review(source, report, out _);
+
+        // Assert — les trois morceaux restent en gras, le rendu est inchangé
+        var runs = ReadPart(output, "word/document.xml").Descendants(W + "p").Single()
+            .Elements(W + "r").Where(r => r.Element(W + "t") != null).ToList();
+        Assert.Equal(3, runs.Count);
+        Assert.All(runs, r => Assert.NotNull(r.Element(W + "rPr")?.Element(W + "b")));
+    }
+
+    [Fact]
+    public void Review_SplittingRunsMarksSpacesAsPreserved()
+    {
+        // Arrange — la moitié des règles portent sur des espaces
+        using var source = CreatePackageWithBody("<w:p><w:r><w:t xml:space=\"preserve\">Deux  espaces</w:t></w:r></w:p>");
+        var report = ReportWith(Error("DoubleEspace", 0, offset: 4, length: 2));
+
+        // Act
+        using var output = Review(source, report, out _);
+
+        // Assert
+        var paragraph = ReadPart(output, "word/document.xml").Descendants(W + "p").Single();
+        Assert.Equal("  ", AnchoredText(paragraph, 1));
+        Assert.Equal("Deux  espaces", ParagraphText(paragraph));
+        Assert.All(paragraph.Descendants(W + "t"),
+            t => Assert.Equal("preserve", (string?)t.Attribute(XNamespace.Xml + "space")));
+    }
+
+    [Fact]
+    public void Review_AnchorsRangeSpanningSeveralRuns()
+    {
+        // Arrange — Word a coupé le paragraphe entre les deux espaces
+        using var source = CreatePackageWithBody(
+            "<w:p><w:r><w:t xml:space=\"preserve\">Deux </w:t></w:r><w:r><w:t xml:space=\"preserve\"> espaces</w:t></w:r></w:p>");
+        var report = ReportWith(Error("DoubleEspace", 0, offset: 4, length: 2));
+
+        // Act
+        using var output = Review(source, report, out _);
+
+        // Assert
+        var paragraph = ReadPart(output, "word/document.xml").Descendants(W + "p").Single();
+        Assert.Equal("  ", AnchoredText(paragraph, 1));
+        Assert.Equal("Deux  espaces", ParagraphText(paragraph));
+    }
+
+    [Fact]
+    public void Review_AnchorsSeveralRangesInTheSameParagraph()
+    {
+        // Arrange
+        using var source = CreatePackageWithBody("<w:p><w:r><w:t>C'est l'été.</w:t></w:r></w:p>");
+        var report = ReportWith(
+            Error("ApostropheDroite", 0, offset: 1, length: 1),
+            Error("ApostropheDroite", 0, offset: 7, length: 1));
+
+        // Act
+        using var output = Review(source, report, out _);
+
+        // Assert — le découpage du premier ne fausse pas les offsets du second
+        var paragraph = ReadPart(output, "word/document.xml").Descendants(W + "p").Single();
+        Assert.Equal("'", AnchoredText(paragraph, 1));
+        Assert.Equal("'", AnchoredText(paragraph, 2));
+        Assert.Equal("C'est l'été.", ParagraphText(paragraph));
+    }
+
+    [Fact]
+    public void Review_SplittingKeepsRunContentThatFollowsTheText()
+    {
+        // Arrange — un run peut porter autre chose qu'un w:t
+        using var source = CreatePackageWithBody(
+            "<w:p><w:r><w:t>C'est</w:t><w:tab/></w:r><w:r><w:t> la fin.</w:t></w:r></w:p>");
+        var report = ReportWith(Error("ApostropheDroite", 0, offset: 1, length: 1));
+
+        // Act
+        using var output = Review(source, report, out _);
+
+        // Assert
+        var paragraph = ReadPart(output, "word/document.xml").Descendants(W + "p").Single();
+        Assert.Equal("'", AnchoredText(paragraph, 1));
+        Assert.Single(paragraph.Descendants(W + "tab"));
+        Assert.Equal("C'est la fin.", ParagraphText(paragraph));
+    }
+
+    [Fact]
+    public void Review_ErrorWithoutOffset_AnchorsWholeParagraph()
+    {
+        // Arrange — une règle qui porte sur le paragraphe, pas sur des caractères
+        using var source = CreatePackageWithBody("<w:p><w:r><w:t>Un paragraphe entier.</w:t></w:r></w:p>");
+        var report = ReportWith(Error("StyleParagrapheInvalide", 0));
+
+        // Act
+        using var output = Review(source, report, out _);
+
+        // Assert
+        var paragraph = ReadPart(output, "word/document.xml").Descendants(W + "p").Single();
+        Assert.Equal("Un paragraphe entier.", AnchoredText(paragraph, 1));
+        Assert.Single(paragraph.Elements(W + "r"), r => r.Element(W + "t") != null);
+    }
+
+    [Theory]
+    [InlineData(100, 1)]  // au-delà de la fin du texte
+    [InlineData(0, 500)]  // plage plus longue que le texte
+    public void Review_UnresolvableRange_FallsBackToWholeParagraph(int offset, int length)
+    {
+        // Arrange
+        using var source = CreatePackageWithBody("<w:p><w:r><w:t>Un paragraphe entier.</w:t></w:r></w:p>");
+        var report = ReportWith(Error("ApostropheDroite", 0, offset: offset, length: length));
+
+        // Act
+        using var output = Review(source, report, out int commentsAdded);
+
+        // Assert — on annote quand même, sur le paragraphe entier
+        Assert.Equal(1, commentsAdded);
+        var paragraph = ReadPart(output, "word/document.xml").Descendants(W + "p").Single();
+        Assert.Equal("Un paragraphe entier.", AnchoredText(paragraph, 1));
+    }
+
+    [Fact]
+    public void Review_EndToEnd_AnchorsOnTheCharactersTheValidatorFound()
+    {
+        // Arrange
+        using var source = CreatePackageWithBody(
+            "<w:p><w:pPr><w:pStyle w:val=\"Titre1\"/></w:pPr><w:r><w:t>Titre</w:t></w:r></w:p>"
+            + "<w:p><w:r><w:t>C'est un bel été.</w:t></w:r></w:p>");
+        var report = DocxValidator.Validate(source);
+        source.Position = 0;
+
+        // Act
+        using var output = Review(source, report, out _);
+
+        // Assert
+        var apostrophe = Assert.Single(report.Errors);
+        Assert.Equal("ApostropheDroite", apostrophe.RuleName);
+        var paragraph = ReadPart(output, "word/document.xml").Descendants(W + "p").Last();
+        Assert.Equal("'", AnchoredText(paragraph, 1));
     }
 
     [Fact]

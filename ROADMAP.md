@@ -137,19 +137,46 @@ Ouverture dans Word validée par l'utilisateur le 2026-08-28.
 Réserve : le document d'essai ne contenait pas de note de bas de page, donc
 l'ancrage dans `word/footnotes.xml` reste non vérifié dans Word (cf. §3).
 
-### Étape 2 — Ancrage précis au caractère
+### Étape 2 — Ancrage précis au caractère ✅
 
-- [ ] `ParagraphTextMap` : pendant la concaténation des `w:t`, construire la
-      table `(élément w:t, offset de début dans le paragraphe, longueur)`.
-- [ ] Ajouter `Offset` / `Length` à `ValidationError` et les renseigner dans
-      chaque règle (les offsets existent déjà localement, ils sont
-      aujourd'hui uniquement passés à `GetContext`).
-- [ ] Conversion offset paragraphe → (run, offset local), avec découpage
-      d'un `w:r` en trois (avant / visé / après) en recopiant son `w:rPr`.
-- [ ] Déplacer les ancres de commentaires sur la plage exacte.
+*Terminée le 2026-08-28, branche `feature/relecture-ancrage-precis`.*
 
-**Critère de fin** : le commentaire surligne l'apostrophe fautive, pas le
-paragraphe entier.
+- [x] `src/Scrubx.Core/ParagraphTextMap.cs` : pendant la concaténation des
+      `w:t`, construire la table `(élément w:t, offset de début, longueur)`.
+      C'est désormais la **définition unique du « texte d'un paragraphe »** —
+      `DocxValidator` passe par elle, donc les offsets qu'il relève sont
+      interprétables par `DocxReviewer`.
+- [x] `Offset` / `Length` dans `ValidationError`, renseignés par chaque règle
+      (contrairement à `EntryName`/`ParagraphIndex`, ça ne peut pas
+      s'estampiller après coup : chaque règle est seule à connaître sa plage).
+- [x] Conversion offset paragraphe → run, avec découpage d'un `w:r` en deux et
+      recopie du `w:rPr` sur chaque moitié.
+- [x] Ancres posées sur la plage exacte.
+- [x] Tests : 22 nouveaux (10 sur `ParagraphTextMap`, 12 sur l'ancrage
+      précis) — 128 au total, tous verts.
+
+Choix faits en cours de route :
+
+- **Les marques restent au niveau du paragraphe.** À l'intérieur d'un `w:ins`
+  ou d'un `w:hyperlink`, le schéma OOXML n'accepte pas
+  `w:commentRangeStart` (`EG_RangeMarkupElements` n'appartient pas à
+  `EG_ContentRunContent`). Les marques encadrent donc l'ancêtre du run qui est
+  enfant direct du `w:p`. Conséquence : une anomalie **à l'intérieur d'un lien
+  hypertexte ou d'une révision existante** est surlignée en entier plutôt qu'au
+  caractère près — imprécis mais toujours valide, jamais corrompu.
+- **Repli systématique sur le paragraphe entier** quand `Offset` est nul
+  (règles de style, saut de page, puce de liste) ou quand la plage ne se
+  résout pas. Une anomalie n'est jamais perdue faute d'ancrage.
+- **Découpage de la fin avant le début** : un découpage de run ne change pas le
+  texte du paragraphe, donc les offsets restent valides d'une coupe à l'autre,
+  y compris entre deux commentaires du même paragraphe.
+- **`xml:space="preserve"` systématique** sur les `w:t` issus d'un découpage.
+
+**Critère de fin — atteint.** Sur `mon-roman-2026-05-21.docx`, les
+5 commentaires sont ancrés exactement sur les caractères fautifs (`' '`,
+`'-'`, `'"'`, `'"'`, `' '`), le texte du document est inchangé, et le
+découpage n'ajoute que 6 runs sur 537. **Ouverture dans Word non encore
+faite.**
 
 ### Étape 3 — Marques de révision
 
@@ -222,3 +249,4 @@ paragraphe entier.
 | 2026-08-28 | — | Cadrage : mode relecture (suggestions) retenu, correction automatique écartée. Rédaction de cette roadmap. Aucun code écrit. |
 | 2026-08-28 | 1 | Étape 1 terminée : `DocxReviewer`, position des anomalies dans `ValidationError`, 20 tests (106 au total, verts). Fichier d'essai produit à partir de `mon-roman-2026-05-21.docx`. Reste à ouvrir dans Word. |
 | 2026-08-28 | 1 | Étape 1 validée par l'utilisateur après ouverture dans Word. Reste en suspens : le cas des notes de bas de page, absent du document d'essai. |
+| 2026-08-28 | 2 | Étape 2 terminée : `ParagraphTextMap`, offsets par règle, découpage de runs, ancrage au caractère près. 128 tests verts. Reste à ouvrir dans Word. |

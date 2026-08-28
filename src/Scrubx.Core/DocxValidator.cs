@@ -30,6 +30,17 @@ public class ValidationError
     /// doit énumérer les paragraphes de la même façon (cf. `DocxReviewer`).
     /// </summary>
     public int? ParagraphIndex { get; set; }
+
+    /// <summary>
+    /// Position de l'anomalie dans le texte du paragraphe, au sens de
+    /// <see cref="ParagraphTextMap"/>. Null quand l'anomalie porte sur le
+    /// paragraphe entier plutôt que sur des caractères précis (style,
+    /// saut de page, puce de liste…).
+    /// </summary>
+    public int? Offset { get; set; }
+
+    /// <summary>Nombre de caractères concernés à partir de <see cref="Offset"/>.</summary>
+    public int Length { get; set; }
 }
 
 public class ValidationReport
@@ -157,7 +168,7 @@ public static class DocxValidator
                     // l'emplacement ; on les estampille toutes en fin de paragraphe.
                     int errorsBeforeParagraph = report.Errors.Count;
 
-                    var text = string.Concat(p.Descendants(WNamespace + "t").Select(e => e.Value));
+                    var text = ParagraphTextMap.Build(p).Text;
 
                     // Check: space at the end of paragraph
                     if (IsEnabled("EspaceFinParagraphe") && text.Length > 0)
@@ -170,7 +181,9 @@ public static class DocxValidator
                             {
                                 RuleName = "EspaceFinParagraphe",
                                 Message = "Espace en fin de paragraphe détectée.",
-                                Context = context
+                                Context = context,
+                                Offset = text.Length - 1,
+                                Length = 1
                             });
                         }
                     }
@@ -193,7 +206,9 @@ public static class DocxValidator
                             {
                                 RuleName = "DoubleEspace",
                                 Message = "Deux espaces consécutives ou plus détectées.",
-                                Context = context
+                                Context = context,
+                                Offset = startIdx,
+                                Length = length
                             });
                         }
                     }
@@ -210,7 +225,9 @@ public static class DocxValidator
                             RuleName = "VirguleAvantEt",
                             Message = "Virgule détectée juste avant le mot 'et' (avertissement d'énumération).",
                             Context = context,
-                            IsWarning = true
+                            IsWarning = true,
+                            Offset = match.Index,
+                            Length = match.Length
                         });
                     }
 
@@ -280,7 +297,9 @@ public static class DocxValidator
                         {
                             RuleName = "ApostropheDroite",
                             Message = "Apostrophe droite (') détectée. Veuillez utiliser une apostrophe courbée (’).",
-                            Context = context
+                            Context = context,
+                            Offset = aposIdx,
+                            Length = 1
                         });
                         aposIdx = text.IndexOf('\'', aposIdx + 1);
                     }
@@ -294,7 +313,9 @@ public static class DocxValidator
                         {
                             RuleName = "GuillemetDroit",
                             Message = "Guillemet droit (\") détecté. Veuillez utiliser des guillemets français (« ou »).",
-                            Context = context
+                            Context = context,
+                            Offset = quoteIdx,
+                            Length = 1
                         });
                         quoteIdx = text.IndexOf('"', quoteIdx + 1);
                     }
@@ -328,7 +349,9 @@ public static class DocxValidator
                         {
                             RuleName = "TiretDebutInvalide",
                             Message = $"Tiret de début de ligne invalide ({trimmedText[0]}). Veuillez utiliser un tiret cadratin (—).",
-                            Context = context
+                            Context = context,
+                            Offset = leadingSpacesCount,
+                            Length = 1
                         });
                     }
                     else if (IsEnabled("TiretDebutInvalide") && startsWithInvalidDashList)
@@ -361,13 +384,16 @@ public static class DocxValidator
 
                         if (invalidSpace)
                         {
-                            int errIdx = leadingSpacesCount + 1;
-                            var context = GetContext(text, leadingSpacesCount, 2); // Highlight the em-dash and the next char
+                            // Highlight the em-dash and the next char
+                            int errLength = Math.Min(2, text.Length - leadingSpacesCount);
+                            var context = GetContext(text, leadingSpacesCount, errLength);
                             report.Errors.Add(new ValidationError
                             {
                                 RuleName = "EspaceInsecableManquante",
                                 Message = "Tiret cadratin (—) en début de ligne non suivi d'une espace insécable.",
-                                Context = context
+                                Context = context,
+                                Offset = leadingSpacesCount,
+                                Length = errLength
                             });
                         }
                     }
@@ -388,7 +414,9 @@ public static class DocxValidator
                                     {
                                         RuleName = "EspaceInsecablePonctuation",
                                         Message = $"Espace insécable manquante avant le signe '{c}' (espace ordinaire détectée).",
-                                        Context = context
+                                        Context = context,
+                                        Offset = idx - 1,
+                                        Length = 2
                                     });
                                 }
                                 else if (prev != '\u00A0' && prev != '\u202F')
@@ -403,7 +431,9 @@ public static class DocxValidator
                                         {
                                             RuleName = "EspaceInsecablePonctuation",
                                             Message = $"Espace insécable manquante avant le signe '{c}'.",
-                                            Context = context
+                                            Context = context,
+                                            Offset = idx - 1,
+                                            Length = 2
                                         });
                                     }
                                 }
@@ -450,7 +480,9 @@ public static class DocxValidator
                                 {
                                     RuleName = "EspaceGuillemet",
                                     Message = msg,
-                                    Context = context
+                                    Context = context,
+                                    Offset = idx,
+                                    Length = errLen
                                 });
                             }
                         }
@@ -492,7 +524,9 @@ public static class DocxValidator
                                 {
                                     RuleName = "EspaceGuillemet",
                                     Message = msg,
-                                    Context = context
+                                    Context = context,
+                                    Offset = errIdx,
+                                    Length = errLen
                                 });
                             }
                         }

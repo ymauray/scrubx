@@ -10,12 +10,14 @@ namespace Scrubx.Cli;
 
 /// <summary>
 /// Produit une copie annotée d'un .docx : chaque anomalie d'un
-/// <see cref="ValidationReport"/> devient un commentaire Word ancré sur le
-/// paragraphe concerné, comme si un relecteur était passé sur le document.
+/// <see cref="ValidationReport"/> devient un commentaire Word ancré sur les
+/// caractères fautifs, comme si un relecteur était passé sur le document.
 ///
-/// Le contenu du document n'est jamais modifié : aucun `w:r` n'est touché,
-/// seules les ancres de commentaires sont ajoutées. L'utilisateur reste libre
-/// de traiter ou d'ignorer chaque commentaire dans Word.
+/// Le texte du document n'est jamais modifié. Les runs sont en revanche
+/// découpés là où il le faut pour que les marques de commentaire encadrent
+/// exactement la plage signalée : la mise en forme de chaque moitié est
+/// recopiée, si bien que le rendu est inchangé. L'utilisateur reste libre de
+/// traiter ou d'ignorer chaque commentaire dans Word.
 /// </summary>
 public static class DocxReviewer
 {
@@ -87,8 +89,7 @@ public static class DocxReviewer
 
             foreach (var paragraphGroup in partGroup.GroupBy(e => ResolveParagraphIndex(e.ParagraphIndex, paragraphs.Count)))
             {
-                var rangeStarts = new List<XElement>();
-                var rangeEnds = new List<XElement>();
+                var paragraph = paragraphs[paragraphGroup.Key];
 
                 foreach (var error in paragraphGroup)
                 {
@@ -96,24 +97,8 @@ public static class DocxReviewer
                     commentsDoc.Root!.Add(BuildComment(commentId, error, stamp));
                     commentsAdded++;
 
-                    rangeStarts.Add(new XElement(W + "commentRangeStart", new XAttribute(W + "id", commentId)));
-                    rangeEnds.Add(new XElement(W + "commentRangeEnd", new XAttribute(W + "id", commentId)));
-                    rangeEnds.Add(new XElement(W + "r",
-                        new XElement(W + "commentReference", new XAttribute(W + "id", commentId))));
+                    AnchorComment(paragraph, commentId, error);
                 }
-
-                var paragraph = paragraphs[paragraphGroup.Key];
-                // `w:pPr` doit rester le premier enfant du paragraphe.
-                var properties = paragraph.Element(W + "pPr");
-                if (properties != null)
-                {
-                    properties.AddAfterSelf(rangeStarts);
-                }
-                else
-                {
-                    paragraph.AddFirst(rangeStarts);
-                }
-                paragraph.Add(rangeEnds);
             }
 
             modifiedParts[partGroup.Key] = partDoc;
@@ -182,6 +167,137 @@ public static class DocxReviewer
         }
     }
 
+    /// <summary>
+    /// Pose les marques d'un commentaire autour des caractères fautifs. Si
+    /// l'anomalie ne désigne pas de plage (règle qui porte sur le paragraphe
+    /// entier), ou si la plage ne peut pas être résolue, le paragraphe entier
+    /// est encadré.
+    /// </summary>
+    private static void AnchorComment(XElement paragraph, int commentId, ValidationError error)
+    {
+        var rangeStart = new XElement(W + "commentRangeStart", new XAttribute(W + "id", commentId));
+        var rangeEnd = new XElement(W + "commentRangeEnd", new XAttribute(W + "id", commentId));
+        var reference = new XElement(W + "r",
+            new XElement(W + "commentReference", new XAttribute(W + "id", commentId)));
+
+        var range = error.Offset is int offset
+            ? IsolateRange(paragraph, offset, offset + error.Length)
+            : null;
+
+        if (range.HasValue)
+        {
+            var (first, last) = range.Value;
+            // Les marques sont posées au niveau du paragraphe : à l'intérieur
+            // d'un `w:ins` ou d'un `w:hyperlink`, le schéma ne les accepte pas.
+            TopLevelAncestor(first, paragraph).AddBeforeSelf(rangeStart);
+            var closing = TopLevelAncestor(last, paragraph);
+            closing.AddAfterSelf(rangeEnd);
+            rangeEnd.AddAfterSelf(reference);
+            return;
+        }
+
+        // `w:pPr` doit rester le premier enfant du paragraphe.
+        var properties = paragraph.Element(W + "pPr");
+        if (properties != null)
+        {
+            properties.AddAfterSelf(rangeStart);
+        }
+        else
+        {
+            paragraph.AddFirst(rangeStart);
+        }
+        paragraph.Add(rangeEnd);
+        paragraph.Add(reference);
+    }
+
+    /// <summary>
+    /// Découpe les runs pour que les caractères `[start, end)` du texte du
+    /// paragraphe occupent des `w:t` entiers, et renvoie le premier et le
+    /// dernier d'entre eux.
+    /// </summary>
+    private static (XElement First, XElement Last)? IsolateRange(XElement paragraph, int start, int end)
+    {
+        if (start < 0 || end <= start) return null;
+
+        // On coupe la fin puis le début : un découpage de run ne change pas le
+        // texte du paragraphe, donc les offsets restent valides d'un bout à
+        // l'autre. La table est reconstruite après chaque coupe.
+        var map = ParagraphTextMap.Build(paragraph);
+        if (end > map.Text.Length) return null;
+
+        var last = map.SegmentContaining(end - 1);
+        if (last == null) return null;
+        if (end < last.Value.End && !TrySplitAt(last.Value.Text, end - last.Value.Start)) return null;
+
+        map = ParagraphTextMap.Build(paragraph);
+        var first = map.SegmentContaining(start);
+        if (first == null) return null;
+        if (start > first.Value.Start && !TrySplitAt(first.Value.Text, start - first.Value.Start)) return null;
+
+        map = ParagraphTextMap.Build(paragraph);
+        var covered = map.Segments.Where(s => s.Start >= start && s.End <= end).ToList();
+        if (covered.Count == 0) return null;
+
+        return (covered[0].Text, covered[^1].Text);
+    }
+
+    /// <summary>
+    /// Scinde le run portant <paramref name="textNode"/> en deux, à
+    /// <paramref name="localOffset"/> caractères du début de ce `w:t`. La mise
+    /// en forme (`w:rPr`) est recopiée sur les deux moitiés.
+    /// </summary>
+    private static bool TrySplitAt(XElement textNode, int localOffset)
+    {
+        var run = textNode.Parent;
+        if (run == null || run.Name != W + "r") return false;
+
+        var value = textNode.Value;
+        if (localOffset <= 0 || localOffset >= value.Length) return true;
+
+        var tail = new XElement(run.Name, run.Attributes());
+        var properties = run.Element(W + "rPr");
+        if (properties != null) tail.Add(new XElement(properties));
+        tail.Add(TextElement(value[localOffset..]));
+
+        // Ce qui suivait le `w:t` dans le run d'origine part avec la queue.
+        foreach (var following in textNode.ElementsAfterSelf().ToList())
+        {
+            following.Remove();
+            tail.Add(following);
+        }
+
+        textNode.Value = value[..localOffset];
+        PreserveSpace(textNode);
+        run.AddAfterSelf(tail);
+        return true;
+    }
+
+    /// <summary>Ancêtre de <paramref name="node"/> qui est enfant direct du paragraphe.</summary>
+    private static XElement TopLevelAncestor(XElement node, XElement paragraph)
+    {
+        var current = node;
+        while (current.Parent != null && current.Parent != paragraph)
+        {
+            current = current.Parent;
+        }
+        return current;
+    }
+
+    private static XElement TextElement(string value)
+    {
+        var element = new XElement(W + "t", value);
+        PreserveSpace(element);
+        return element;
+    }
+
+    /// <summary>
+    /// Une moitié de run peut commencer ou finir par une espace — la moitié des
+    /// règles portent justement sur des espaces — donc `xml:space` est
+    /// systématiquement posé.
+    /// </summary>
+    private static void PreserveSpace(XElement textElement) =>
+        textElement.SetAttributeValue(XNamespace.Xml + "space", "preserve");
+
     private static XElement BuildComment(int commentId, ValidationError error, string stamp)
     {
         var code = RuleCatalog.GetCode(error.RuleName);
@@ -206,11 +322,7 @@ public static class DocxReviewer
     }
 
     private static XElement CommentParagraph(string text) =>
-        new XElement(W + "p",
-            new XElement(W + "r",
-                new XElement(W + "t",
-                    new XAttribute(XNamespace.Xml + "space", "preserve"),
-                    text)));
+        new XElement(W + "p", new XElement(W + "r", TextElement(text)));
 
     /// <summary>
     /// Une anomalie qui porte sur le document entier (index null), ou dont

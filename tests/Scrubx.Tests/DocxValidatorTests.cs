@@ -775,4 +775,49 @@ public class DocxValidatorTests
         Assert.Equal("VirguleAvantEt", report.Errors[0].RuleName);
         Assert.True(report.Errors[0].IsWarning);
     }
+
+    [Fact]
+    public void Validate_WithErrorInBody_LocatesEntryAndParagraph()
+    {
+        // Arrange — paragraph 0 is the Titre1 heading, paragraph 1 the content
+        using var docxStream = CreateMockDocx("C'est un bel été.");
+
+        // Act
+        var report = DocxValidator.Validate(docxStream);
+
+        // Assert
+        var error = Assert.Single(report.Errors, e => e.RuleName == "ApostropheDroite");
+        Assert.Equal("word/document.xml", error.EntryName);
+        Assert.Equal(1, error.ParagraphIndex);
+    }
+
+    [Fact]
+    public void Validate_WithErrorInFootnotes_LocatesFootnotesEntry()
+    {
+        // Arrange
+        using var docxStream = CreateMockDocx("C'est un bel été.", "word/footnotes.xml");
+
+        // Act
+        var report = DocxValidator.Validate(docxStream);
+
+        // Assert
+        var error = Assert.Single(report.Errors, e => e.RuleName == "ApostropheDroite");
+        Assert.Equal("word/footnotes.xml", error.EntryName);
+        Assert.Equal(0, error.ParagraphIndex);
+    }
+
+    [Fact]
+    public void Validate_WithDocumentWideError_HasNoParagraphIndex()
+    {
+        // Arrange — no word/document.xml part, so no Titre1 anywhere
+        using var docxStream = CreateMockDocx("Texte de note.", "word/footnotes.xml");
+
+        // Act
+        var report = DocxValidator.Validate(docxStream);
+
+        // Assert
+        var error = Assert.Single(report.Errors, e => e.RuleName == "StyleTitre1Manquant");
+        Assert.Equal("word/document.xml", error.EntryName);
+        Assert.Null(error.ParagraphIndex);
+    }
 }

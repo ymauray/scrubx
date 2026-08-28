@@ -14,6 +14,22 @@ public class ValidationError
     public string Message { get; set; } = string.Empty;
     public string Context { get; set; } = string.Empty;
     public bool IsWarning { get; set; } = false;
+
+    /// <summary>
+    /// Partie du .docx où l'anomalie a été détectée (`word/document.xml`,
+    /// `word/footnotes.xml` ou `word/endnotes.xml`). Null pour les erreurs de
+    /// lecture, qui ne se rattachent à aucun emplacement.
+    /// </summary>
+    public string? EntryName { get; set; }
+
+    /// <summary>
+    /// Index du paragraphe (`w:p`) dans l'ordre du document, au sein de
+    /// <see cref="EntryName"/>. Null pour une anomalie qui porte sur le
+    /// document entier (ex. `StyleTitre1Manquant`).
+    /// Cet index suit l'énumération `Descendants(w:p)` : tout consommateur
+    /// doit énumérer les paragraphes de la même façon (cf. `DocxReviewer`).
+    /// </summary>
+    public int? ParagraphIndex { get; set; }
 }
 
 public class ValidationReport
@@ -132,9 +148,15 @@ public static class DocxValidator
                 var doc = XDocument.Load(stream);
                 
                 var paragraphElements = doc.Descendants(WNamespace + "p");
-                
+                int paragraphIndex = -1;
+
                 foreach (var p in paragraphElements)
                 {
+                    paragraphIndex++;
+                    // Les règles ci-dessous ajoutent leurs erreurs sans se soucier de
+                    // l'emplacement ; on les estampille toutes en fin de paragraphe.
+                    int errorsBeforeParagraph = report.Errors.Count;
+
                     var text = string.Concat(p.Descendants(WNamespace + "t").Select(e => e.Value));
 
                     // Check: space at the end of paragraph
@@ -475,6 +497,12 @@ public static class DocxValidator
                             }
                         }
                     }
+
+                    for (int i = errorsBeforeParagraph; i < report.Errors.Count; i++)
+                    {
+                        report.Errors[i].EntryName = entryName;
+                        report.Errors[i].ParagraphIndex = paragraphIndex;
+                    }
                 }
             }
 
@@ -484,7 +512,8 @@ public static class DocxValidator
                 {
                     RuleName = "StyleTitre1Manquant",
                     Message = "Le document doit contenir au moins un paragraphe portant le style 'Titre1'.",
-                    Context = "[Document entier]"
+                    Context = "[Document entier]",
+                    EntryName = "word/document.xml"
                 });
             }
         }

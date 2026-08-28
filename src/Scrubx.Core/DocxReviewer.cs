@@ -38,8 +38,8 @@ public static class DocxReviewer
     /// Écrit dans <paramref name="outputPath"/> une copie annotée de
     /// <paramref name="sourcePath"/>. Le fichier source n'est jamais modifié.
     /// </summary>
-    /// <returns>Le nombre de commentaires ajoutés.</returns>
-    public static int Review(string sourcePath, string outputPath, ValidationReport report, DateTimeOffset? date = null)
+    /// <returns>Ce qui a été ajouté au document.</returns>
+    public static ReviewResult Review(string sourcePath, string outputPath, ValidationReport report, DateTimeOffset? date = null)
     {
         if (string.Equals(Path.GetFullPath(sourcePath), Path.GetFullPath(outputPath), StringComparison.OrdinalIgnoreCase))
         {
@@ -55,8 +55,8 @@ public static class DocxReviewer
     /// Écrit dans <paramref name="output"/> une copie annotée de
     /// <paramref name="source"/>.
     /// </summary>
-    /// <returns>Le nombre de commentaires ajoutés.</returns>
-    public static int Review(Stream source, Stream output, ValidationReport report, DateTimeOffset? date = null)
+    /// <returns>Ce qui a été ajouté au document.</returns>
+    public static ReviewResult Review(Stream source, Stream output, ValidationReport report, DateTimeOffset? date = null)
     {
         var stamp = (date ?? DateTimeOffset.UtcNow).UtcDateTime.ToString("yyyy-MM-ddTHH:mm:ssZ");
 
@@ -74,6 +74,7 @@ public static class DocxReviewer
         var modifiedParts = new Dictionary<string, XDocument>(StringComparer.Ordinal);
         var commentedParts = new List<string>();
         int commentsAdded = 0;
+        var revisions = new RevisionWriter(stamp);
 
         var locatedErrors = report.Errors.Where(e => e.EntryName != null);
 
@@ -87,10 +88,14 @@ public static class DocxReviewer
             var paragraphs = partDoc.Descendants(W + "p").ToList();
             if (paragraphs.Count == 0) continue;
 
+            revisions.ReserveIdsUsedBy(partDoc);
+
             foreach (var paragraphGroup in partGroup.GroupBy(e => ResolveParagraphIndex(e.ParagraphIndex, paragraphs.Count)))
             {
                 var paragraph = paragraphs[paragraphGroup.Key];
 
+                // Les commentaires d'abord : ils n'altèrent pas le texte, donc
+                // les offsets restent ceux relevés par le validateur.
                 foreach (var error in paragraphGroup)
                 {
                     int commentId = nextCommentId++;
@@ -99,6 +104,8 @@ public static class DocxReviewer
 
                     AnchorComment(paragraph, commentId, error);
                 }
+
+                ApplyRevisions(paragraph, paragraphGroup, revisions);
             }
 
             modifiedParts[partGroup.Key] = partDoc;
@@ -136,7 +143,7 @@ public static class DocxReviewer
         }
 
         WriteArchive(archive, output, modifiedParts);
-        return commentsAdded;
+        return new ReviewResult(commentsAdded, revisions.Count);
     }
 
     private static void WriteArchive(ZipArchive source, Stream output, Dictionary<string, XDocument> modifiedParts)
@@ -208,6 +215,245 @@ public static class DocxReviewer
         }
         paragraph.Add(rangeEnd);
         paragraph.Add(reference);
+    }
+
+    /// <summary>
+    /// Traduit en marques de révision les corrections proposées par les règles
+    /// de ce paragraphe.
+    /// </summary>
+    private static void ApplyRevisions(XElement paragraph, IEnumerable<ValidationError> errors, RevisionWriter revisions)
+    {
+        var applied = new List<(int Start, int End)>();
+
+        // De droite à gauche : une modification ne décale alors que du texte
+        // déjà traité, donc les offsets restants restent valides.
+        var suggestions = errors
+            .Select(e => e.Suggestion)
+            .Where(s => s != null && IsApplicable(s))
+            .Select(s => s!)
+            .OrderByDescending(s => s.Offset)
+            .ToList();
+
+        foreach (var suggestion in suggestions)
+        {
+            // Deux règles visent parfois les mêmes caractères (une espace en
+            // trop qui est aussi l'espace de fin de paragraphe) : la seconde
+            // marque ferait double emploi, seul son commentaire subsiste.
+            if (OverlapsApplied(applied, suggestion)) continue;
+
+            bool done = suggestion.Kind switch
+            {
+                SuggestedEditKind.Delete => TryDelete(paragraph, suggestion, revisions),
+                SuggestedEditKind.Insert => TryInsert(paragraph, suggestion, revisions),
+                SuggestedEditKind.ParagraphStyle => TryChangeStyle(paragraph, suggestion, revisions),
+                SuggestedEditKind.RemovePageBreak => TryRemovePageBreak(paragraph, revisions),
+                _ => false,
+            };
+
+            if (done)
+            {
+                applied.Add((suggestion.Offset, suggestion.Offset + suggestion.Length));
+                revisions.Applied();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Les substitutions (`w:del` suivi de `w:ins`) sont deux révisions
+    /// distinctes dans le fichier : tant qu'on n'a pas vérifié que Word les
+    /// traite comme un tout — accepter l'une sans l'autre produirait un texte
+    /// incohérent — elles ne sont pas posées, et l'anomalie reste signalée par
+    /// son seul commentaire. Cf. ROADMAP.md §3.
+    /// </summary>
+    private static bool IsApplicable(SuggestedEdit? suggestion) =>
+        suggestion != null && suggestion.Kind != SuggestedEditKind.Replace;
+
+    private static bool OverlapsApplied(List<(int Start, int End)> applied, SuggestedEdit suggestion)
+    {
+        int start = suggestion.Offset;
+        int end = start + suggestion.Length;
+
+        foreach (var (appliedStart, appliedEnd) in applied)
+        {
+            bool overlaps = suggestion.Length == 0
+                ? start > appliedStart && start < appliedEnd
+                : start < appliedEnd && end > appliedStart;
+            if (overlaps) return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>Marque `[Offset, Offset + Length)` comme supprimé.</summary>
+    private static bool TryDelete(XElement paragraph, SuggestedEdit suggestion, RevisionWriter revisions)
+    {
+        if (suggestion.Length <= 0) return false;
+
+        var range = IsolateRange(paragraph, suggestion.Offset, suggestion.Offset + suggestion.Length);
+        if (range == null) return false;
+
+        var (first, last) = range.Value;
+        var nodes = NodesBetween(TopLevelAncestor(first, paragraph), TopLevelAncestor(last, paragraph));
+        if (nodes == null) return false;
+
+        var deletion = revisions.Mark("del");
+        nodes[0].AddBeforeSelf(deletion);
+
+        // Une marque de commentaire ne peut pas vivre dans un `w:del` : elle est
+        // repoussée de part et d'autre, ce qui préserve le surlignage.
+        var trailing = new List<XElement>();
+        foreach (var node in nodes)
+        {
+            node.Remove();
+
+            if (node.Name == W + "commentRangeStart") deletion.AddBeforeSelf(node);
+            else if (node.Name == W + "commentRangeEnd" || node.Descendants(W + "commentReference").Any()) trailing.Add(node);
+            else deletion.Add(node);
+        }
+        deletion.AddAfterSelf(trailing);
+
+        if (!deletion.Elements().Any())
+        {
+            deletion.Remove();
+            return false;
+        }
+
+        // Dans une suppression, le texte se porte par `w:delText`.
+        foreach (var textNode in deletion.Descendants(W + "t").ToList())
+        {
+            textNode.ReplaceWith(new XElement(W + "delText", textNode.Attributes(), textNode.Value));
+        }
+
+        return true;
+    }
+
+    /// <summary>Insère <see cref="SuggestedEdit.Text"/> comme texte ajouté.</summary>
+    private static bool TryInsert(XElement paragraph, SuggestedEdit suggestion, RevisionWriter revisions)
+    {
+        if (suggestion.Text.Length == 0) return false;
+
+        var map = ParagraphTextMap.Build(paragraph);
+        if (suggestion.Offset < 0 || suggestion.Offset > map.Text.Length || map.Segments.Count == 0) return false;
+
+        var insertion = revisions.Mark("ins");
+        var run = new XElement(W + "r");
+
+        if (suggestion.Offset == map.Text.Length)
+        {
+            // En toute fin de paragraphe : rien à découper.
+            var lastSegment = map.Segments[^1];
+            CopyFormatting(lastSegment.Text, run);
+            run.Add(TextElement(suggestion.Text));
+            insertion.Add(run);
+            TopLevelAncestor(lastSegment.Text, paragraph).AddAfterSelf(insertion);
+            return true;
+        }
+
+        var segment = map.SegmentContaining(suggestion.Offset);
+        if (segment == null) return false;
+        if (suggestion.Offset > segment.Value.Start
+            && !TrySplitAt(segment.Value.Text, suggestion.Offset - segment.Value.Start)) return false;
+
+        map = ParagraphTextMap.Build(paragraph);
+        var target = map.Segments.FirstOrDefault(s => s.Start == suggestion.Offset);
+        if (target.Text == null) return false;
+
+        CopyFormatting(target.Text, run);
+        run.Add(TextElement(suggestion.Text));
+        insertion.Add(run);
+        TopLevelAncestor(target.Text, paragraph).AddBeforeSelf(insertion);
+        return true;
+    }
+
+    /// <summary>Propose un autre style de paragraphe, l'ancien étant conservé dans `w:pPrChange`.</summary>
+    private static bool TryChangeStyle(XElement paragraph, SuggestedEdit suggestion, RevisionWriter revisions)
+    {
+        var properties = paragraph.Element(W + "pPr");
+        var style = properties?.Element(W + "pStyle");
+        if (properties == null || style == null) return false;
+
+        var previous = SnapshotProperties(properties);
+        style.SetAttributeValue(W + "val", suggestion.Text);
+        RecordPropertiesChange(properties, previous, revisions);
+        return true;
+    }
+
+    /// <summary>Propose de retirer la propriété « saut de page avant ».</summary>
+    private static bool TryRemovePageBreak(XElement paragraph, RevisionWriter revisions)
+    {
+        var properties = paragraph.Element(W + "pPr");
+        var pageBreak = properties?.Element(W + "pageBreakBefore");
+        if (properties == null || pageBreak == null) return false;
+
+        var previous = SnapshotProperties(properties);
+        pageBreak.Remove();
+        RecordPropertiesChange(properties, previous, revisions);
+        return true;
+    }
+
+    private static XElement SnapshotProperties(XElement properties)
+    {
+        var copy = new XElement(properties);
+        copy.Element(W + "pPrChange")?.Remove();
+        return copy;
+    }
+
+    private static void RecordPropertiesChange(XElement properties, XElement previous, RevisionWriter revisions)
+    {
+        properties.Element(W + "pPrChange")?.Remove();
+
+        var change = revisions.Mark("pPrChange");
+        change.Add(previous);
+        // `w:pPrChange` ferme la séquence des propriétés de paragraphe.
+        properties.Add(change);
+    }
+
+    private static void CopyFormatting(XElement textNode, XElement run)
+    {
+        var properties = textNode.Parent?.Element(W + "rPr");
+        if (properties != null) run.Add(new XElement(properties));
+    }
+
+    /// <summary>Éléments allant de <paramref name="first"/> à <paramref name="last"/> inclus.</summary>
+    private static List<XElement>? NodesBetween(XElement first, XElement last)
+    {
+        var nodes = new List<XElement>();
+
+        for (XElement? node = first; node != null; node = node.ElementsAfterSelf().FirstOrDefault())
+        {
+            nodes.Add(node);
+            if (node == last) return nodes;
+        }
+
+        return null;
+    }
+
+    /// <summary>Distribue les identifiants de révision et retient ce qui a été posé.</summary>
+    private sealed class RevisionWriter(string stamp)
+    {
+        private int _nextId = 1;
+
+        public int Count { get; private set; }
+
+        public XElement Mark(string name) => new(W + name,
+            new XAttribute(W + "id", _nextId++),
+            new XAttribute(W + "author", Author),
+            new XAttribute(W + "date", stamp));
+
+        public void Applied() => Count++;
+
+        /// <summary>Évite de réutiliser un identifiant déjà porté par une révision existante.</summary>
+        public void ReserveIdsUsedBy(XDocument part)
+        {
+            var revisionNames = new[] { W + "ins", W + "del", W + "pPrChange", W + "rPrChange" };
+            int highest = part.Descendants()
+                .Where(e => revisionNames.Contains(e.Name))
+                .Select(e => int.TryParse((string?)e.Attribute(W + "id"), out int id) ? id : 0)
+                .DefaultIfEmpty(0)
+                .Max();
+
+            if (_nextId <= highest) _nextId = highest + 1;
+        }
     }
 
     /// <summary>

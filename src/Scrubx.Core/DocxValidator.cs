@@ -41,6 +41,12 @@ public class ValidationError
 
     /// <summary>Nombre de caractères concernés à partir de <see cref="Offset"/>.</summary>
     public int Length { get; set; }
+
+    /// <summary>
+    /// Correction proposée, quand elle ne relève pas d'un jugement éditorial.
+    /// Null si la règle se contente de signaler.
+    /// </summary>
+    public SuggestedEdit? Suggestion { get; set; }
 }
 
 public class ValidationReport
@@ -183,7 +189,8 @@ public static class DocxValidator
                                 Message = "Espace en fin de paragraphe détectée.",
                                 Context = context,
                                 Offset = text.Length - 1,
-                                Length = 1
+                                Length = 1,
+                                Suggestion = SuggestedEdit.Delete(text.Length - 1, 1)
                             });
                         }
                     }
@@ -202,13 +209,23 @@ public static class DocxValidator
                             }
                             int length = idx - startIdx + 1;
                             var context = GetContext(text, startIdx, length);
+                            // On garde une seule espace : la dernière si la série
+                            // commence par une espace ordinaire et finit par une
+                            // insécable, la première sinon. La plage supprimée
+                            // reste ainsi contiguë.
+                            char lastSpace = text[startIdx + length - 1];
+                            bool keepLast = text[startIdx] == ' ' && (lastSpace == '\u00A0' || lastSpace == '\u202F');
+                            var collapse = keepLast
+                                ? SuggestedEdit.Delete(startIdx, length - 1)
+                                : SuggestedEdit.Delete(startIdx + 1, length - 1);
                             report.Errors.Add(new ValidationError
                             {
                                 RuleName = "DoubleEspace",
                                 Message = "Deux espaces consécutives ou plus détectées.",
                                 Context = context,
                                 Offset = startIdx,
-                                Length = length
+                                Length = length,
+                                Suggestion = collapse
                             });
                         }
                     }
@@ -260,7 +277,8 @@ public static class DocxValidator
                             {
                                 RuleName = "SautDePageDetecte",
                                 Message = "Propriété de paragraphe 'Saut de page avant' détectée. Les sauts de page ne sont pas autorisés.",
-                                Context = $"[Saut de page avant] {context}"
+                                Context = $"[Saut de page avant] {context}",
+                                Suggestion = SuggestedEdit.RemovePageBreak()
                             });
                         }
                     }
@@ -283,7 +301,8 @@ public static class DocxValidator
                             {
                                 RuleName = "StyleParagrapheInvalide",
                                 Message = $"Style de paragraphe non autorisé : '{styleName}'. Les seuls styles autorisés sont : 'Normal', 'Titre1', 'Ellipse'.",
-                                Context = $"[Style: {styleName}] {context}"
+                                Context = $"[Style: {styleName}] {context}",
+                                Suggestion = SuggestedEdit.ParagraphStyle("Normal")
                             });
                         }
                     }
@@ -299,23 +318,29 @@ public static class DocxValidator
                             Message = "Apostrophe droite (') détectée. Veuillez utiliser une apostrophe courbée (’).",
                             Context = context,
                             Offset = aposIdx,
-                            Length = 1
+                            Length = 1,
+                            Suggestion = SuggestedEdit.Replace(aposIdx, 1, "’")
                         });
                         aposIdx = text.IndexOf('\'', aposIdx + 1);
                     }
 
                     // Check 5: straight double quotes "
                     int quoteIdx = IsEnabled("GuillemetDroit") ? text.IndexOf('"') : -1;
+                    int quoteRank = 0;
                     while (quoteIdx != -1)
                     {
                         var context = GetContext(text, quoteIdx, 1);
+                        // Heuristique : les guillemets droits d'un paragraphe alternent
+                        // ouvrant / fermant. Le relecteur arbitre en cas d'erreur.
+                        var frenchQuote = quoteRank++ % 2 == 0 ? "\u00AB\u00A0" : "\u00A0\u00BB";
                         report.Errors.Add(new ValidationError
                         {
                             RuleName = "GuillemetDroit",
                             Message = "Guillemet droit (\") détecté. Veuillez utiliser des guillemets français (« ou »).",
                             Context = context,
                             Offset = quoteIdx,
-                            Length = 1
+                            Length = 1,
+                            Suggestion = SuggestedEdit.Replace(quoteIdx, 1, frenchQuote)
                         });
                         quoteIdx = text.IndexOf('"', quoteIdx + 1);
                     }
@@ -351,7 +376,8 @@ public static class DocxValidator
                             Message = $"Tiret de début de ligne invalide ({trimmedText[0]}). Veuillez utiliser un tiret cadratin (—).",
                             Context = context,
                             Offset = leadingSpacesCount,
-                            Length = 1
+                            Length = 1,
+                            Suggestion = SuggestedEdit.Replace(leadingSpacesCount, 1, "—")
                         });
                     }
                     else if (IsEnabled("TiretDebutInvalide") && startsWithInvalidDashList)
@@ -387,13 +413,20 @@ public static class DocxValidator
                             // Highlight the em-dash and the next char
                             int errLength = Math.Min(2, text.Length - leadingSpacesCount);
                             var context = GetContext(text, leadingSpacesCount, errLength);
+                            // Une espace ordinaire se remplace, son absence se comble.
+                            int afterDash = leadingSpacesCount + 1;
+                            bool ordinarySpace = trimmedText.Length > 1 && (trimmedText[1] == ' ' || trimmedText[1] == '\t');
+                            var dashFix = ordinarySpace
+                                ? SuggestedEdit.Replace(afterDash, 1, "\u00A0")
+                                : SuggestedEdit.Insert(afterDash, "\u00A0");
                             report.Errors.Add(new ValidationError
                             {
                                 RuleName = "EspaceInsecableManquante",
                                 Message = "Tiret cadratin (—) en début de ligne non suivi d'une espace insécable.",
                                 Context = context,
                                 Offset = leadingSpacesCount,
-                                Length = errLength
+                                Length = errLength,
+                                Suggestion = dashFix
                             });
                         }
                     }
@@ -416,7 +449,8 @@ public static class DocxValidator
                                         Message = $"Espace insécable manquante avant le signe '{c}' (espace ordinaire détectée).",
                                         Context = context,
                                         Offset = idx - 1,
-                                        Length = 2
+                                        Length = 2,
+                                        Suggestion = SuggestedEdit.Replace(idx - 1, 1, "\u00A0")
                                     });
                                 }
                                 else if (prev != '\u00A0' && prev != '\u202F')
@@ -433,7 +467,8 @@ public static class DocxValidator
                                             Message = $"Espace insécable manquante avant le signe '{c}'.",
                                             Context = context,
                                             Offset = idx - 1,
-                                            Length = 2
+                                            Length = 2,
+                                            Suggestion = SuggestedEdit.Insert(idx, "\u00A0")
                                         });
                                     }
                                 }
@@ -450,11 +485,13 @@ public static class DocxValidator
                             bool invalid = false;
                             string msg = string.Empty;
                             int errLen = 1;
-                            
+                            SuggestedEdit? fix = null;
+
                             if (idx == text.Length - 1)
                             {
                                 invalid = true;
                                 msg = "Guillemet ouvrant («) en fin de ligne non suivi d'une espace insécable.";
+                                fix = SuggestedEdit.Insert(idx + 1, "\u00A0");
                             }
                             else
                             {
@@ -464,12 +501,14 @@ public static class DocxValidator
                                     invalid = true;
                                     msg = "Guillemet ouvrant («) non suivi d'une espace insécable (espace ordinaire détectée).";
                                     errLen = 2;
+                                    fix = SuggestedEdit.Replace(idx + 1, 1, "\u00A0");
                                 }
                                 else if (next != '\u00A0' && next != '\u202F')
                                 {
                                     invalid = true;
                                     msg = "Guillemet ouvrant («) non suivi d'une espace insécable.";
                                     errLen = 2;
+                                    fix = SuggestedEdit.Insert(idx + 1, "\u00A0");
                                 }
                             }
 
@@ -482,7 +521,8 @@ public static class DocxValidator
                                     Message = msg,
                                     Context = context,
                                     Offset = idx,
-                                    Length = errLen
+                                    Length = errLen,
+                                    Suggestion = fix
                                 });
                             }
                         }
@@ -492,11 +532,13 @@ public static class DocxValidator
                             string msg = string.Empty;
                             int errIdx = idx;
                             int errLen = 1;
+                            SuggestedEdit? fix = null;
 
                             if (idx == 0)
                             {
                                 invalid = true;
                                 msg = "Guillemet fermant (») en début de ligne non précédé d'une espace insécable.";
+                                fix = SuggestedEdit.Insert(0, "\u00A0");
                             }
                             else
                             {
@@ -507,6 +549,7 @@ public static class DocxValidator
                                     msg = "Guillemet fermant (») non précédé d'une espace insécable (espace ordinaire détectée).";
                                     errIdx = idx - 1;
                                     errLen = 2;
+                                    fix = SuggestedEdit.Replace(idx - 1, 1, "\u00A0");
                                 }
                                 else if (prev != '\u00A0' && prev != '\u202F')
                                 {
@@ -514,6 +557,7 @@ public static class DocxValidator
                                     msg = "Guillemet fermant (») non précédé d'une espace insécable.";
                                     errIdx = idx - 1;
                                     errLen = 2;
+                                    fix = SuggestedEdit.Insert(idx, "\u00A0");
                                 }
                             }
 
@@ -526,7 +570,8 @@ public static class DocxValidator
                                     Message = msg,
                                     Context = context,
                                     Offset = errIdx,
-                                    Length = errLen
+                                    Length = errLen,
+                                    Suggestion = fix
                                 });
                             }
                         }

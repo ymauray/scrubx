@@ -75,6 +75,12 @@ Protocole de test :
 3. Vérifier que « Refuser » sur la marque restaure exactement le texte
    d'origine, et « Accepter » exactement le texte corrigé.
 
+**Le fichier de test est prêt** : `test-revisions-word.docx` à la racine
+(non suivi par git). Il contient, dans les premiers paragraphes, un couple
+`w:del`/`w:ins` adjacent (un mot remplacé par « REMPLACÉ ») et, plus loin,
+une suppression seule — celle-ci doit fonctionner quelle que soit la réponse,
+et sert de témoin.
+
 Si le regroupement ne tient pas → abandonner les marques de révision et
 tout livrer en commentaires (l'étape 3 saute, les étapes 1-2-4 suffisent).
 
@@ -180,15 +186,44 @@ faite.**
 
 ### Étape 3 — Marques de révision
 
-**Conditionnée à la levée de la question du §3.**
+**Première moitié faite le 2026-08-28** (branche `feature/relecture-revisions`) :
+tout ce qui ne dépend pas de la question du §3. La seconde moitié — les
+substitutions — reste conditionnée à sa réponse.
 
-- [ ] `w:del` (avec `w:delText`) + `w:ins`, `w:id` unique sur tout le
-      document, `w:date` en ISO 8601.
-- [ ] `w:pPrChange` pour `STYLEINV` et `SAUTPAGE`/`pageBreakBefore`
-      (l'ancien `w:pPr` est enregistré à l'intérieur du nouveau).
-- [ ] Arbitrer les chevauchements entre règles (voir §5).
-- [ ] Décider si une règle produit commentaire **et** révision, ou seulement
-      l'une des deux (risque de volet de révision illisible).
+Faite :
+
+- [x] `src/Scrubx.Core/SuggestedEdit.cs` : chaque règle propose une correction
+      (`Delete`, `Insert`, `Replace`, `ParagraphStyle`, `RemovePageBreak`),
+      exprimée sur le texte du paragraphe. Une règle qui relève du jugement
+      éditorial (`VirguleAvantEt`) n'en produit aucune.
+- [x] Suppressions (`w:del` + `w:delText`) et insertions (`w:ins`) — **une
+      seule marque chacune, donc aucun problème d'appariement**.
+- [x] `w:pPrChange` pour `STYLEINV` (propose `Normal`) et pour
+      `SAUTPAGE`/`pageBreakBefore` : l'ancien `w:pPr` est enregistré dedans.
+- [x] `w:id` de révision unique, y compris face aux révisions déjà présentes
+      dans le document.
+- [x] Application **de droite à gauche**, et arbitrage des chevauchements :
+      deux règles qui visent les mêmes caractères ne posent qu'une marque,
+      la seconde restant signalée par son commentaire.
+- [x] Chaque anomalie produit **commentaire + marque** : le commentaire dit
+      pourquoi (avec le code de règle), la marque propose le comment.
+- [x] Tests : 10 nouveaux — 138 au total, tous verts.
+
+En attente de la réponse du §3 :
+
+- [ ] Substitutions `w:del` + `w:ins` (`APOS`, `TIRET`, `GDROIT`, et les
+      variantes « espace ordinaire à remplacer » de `EIMANQ`, `EIPONC`,
+      `EGUIL`). Les règles **produisent déjà** ces propositions
+      (`SuggestedEditKind.Replace`) ; `DocxReviewer.IsApplicable` les écarte.
+      Lever la condition tient en une ligne le jour où Word est vérifié.
+- [ ] `SAUTPAGE` par saut manuel (`w:br w:type="page"`) : demande d'isoler un
+      élément non textuel dans son run, ce que le découpage actuel — qui opère
+      sur les `w:t` — ne sait pas faire.
+
+**Critère de fin partiel — atteint.** Sur `mon-roman-2026-05-21.docx` :
+5 commentaires et 2 marques de suppression (les deux espaces en fin de
+paragraphe), les 3 autres anomalies restant en commentaire seul faute de
+substitution autorisée. **Ouverture dans Word non encore faite.**
 
 ### Étape 4 — Surface utilisateur
 
@@ -250,3 +285,4 @@ faite.**
 | 2026-08-28 | 1 | Étape 1 terminée : `DocxReviewer`, position des anomalies dans `ValidationError`, 20 tests (106 au total, verts). Fichier d'essai produit à partir de `mon-roman-2026-05-21.docx`. Reste à ouvrir dans Word. |
 | 2026-08-28 | 1 | Étape 1 validée par l'utilisateur après ouverture dans Word. Reste en suspens : le cas des notes de bas de page, absent du document d'essai. |
 | 2026-08-28 | 2 | Étape 2 terminée : `ParagraphTextMap`, offsets par règle, découpage de runs, ancrage au caractère près. 128 tests verts. Reste à ouvrir dans Word. |
+| 2026-08-28 | 3 | Première moitié de l'étape 3 : propositions de correction, suppressions, insertions, `w:pPrChange`. Substitutions écrites mais désactivées en attendant la vérification Word du §3. 138 tests verts. |

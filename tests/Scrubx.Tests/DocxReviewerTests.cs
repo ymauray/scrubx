@@ -93,7 +93,8 @@ public class DocxReviewerTests
         string entryName = "word/document.xml",
         bool isWarning = false,
         int? offset = null,
-        int length = 0) => new()
+        int length = 0,
+        SuggestedEdit? suggestion = null) => new()
         {
             RuleName = ruleName,
             Message = "Message de test.",
@@ -103,7 +104,12 @@ public class DocxReviewerTests
             IsWarning = isWarning,
             Offset = offset,
             Length = length,
+            Suggestion = suggestion,
         };
+
+    /// <summary>Texte marqué comme supprimé (`w:delText`).</summary>
+    private static string DeletedText(XElement paragraph) =>
+        string.Concat(paragraph.Descendants(W + "delText").Select(t => t.Value));
 
     /// <summary>Construit un paquet dont le corps de document est fourni tel quel.</summary>
     private static MemoryStream CreatePackageWithBody(string bodyXml)
@@ -138,10 +144,10 @@ public class DocxReviewerTests
     private static ValidationReport ReportWith(params ValidationError[] errors) =>
         new() { Errors = errors.ToList() };
 
-    private static MemoryStream Review(MemoryStream source, ValidationReport report, out int commentsAdded)
+    private static MemoryStream Review(MemoryStream source, ValidationReport report, out ReviewResult result)
     {
         var output = new MemoryStream();
-        commentsAdded = DocxReviewer.Review(source, output, report, new DateTimeOffset(2026, 8, 28, 10, 0, 0, TimeSpan.Zero));
+        result = DocxReviewer.Review(source, output, report, new DateTimeOffset(2026, 8, 28, 10, 0, 0, TimeSpan.Zero));
         output.Position = 0;
         return output;
     }
@@ -174,10 +180,10 @@ public class DocxReviewerTests
             Error("VirguleAvantEt", 1, isWarning: true));
 
         // Act
-        using var output = Review(source, report, out int commentsAdded);
+        using var output = Review(source, report, out ReviewResult result);
 
         // Assert
-        Assert.Equal(3, commentsAdded);
+        Assert.Equal(3, result.Comments);
         var comments = ReadPart(output, "word/comments.xml").Root!.Elements(W + "comment").ToList();
         Assert.Equal(3, comments.Count);
         Assert.All(comments, c => Assert.Equal("Scrubx", (string?)c.Attribute(W + "author")));
@@ -334,10 +340,10 @@ public class DocxReviewerTests
         using var source = CreatePackage(["Un paragraphe."]);
 
         // Act
-        using var output = Review(source, new ValidationReport(), out int commentsAdded);
+        using var output = Review(source, new ValidationReport(), out ReviewResult result);
 
         // Assert
-        Assert.Equal(0, commentsAdded);
+        Assert.Equal(0, result.Comments);
         Assert.False(HasPart(output, "word/comments.xml"));
         var relationships = ReadPart(output, "word/_rels/document.xml.rels").Root!.Elements(RelationshipsNs + "Relationship");
         Assert.DoesNotContain(relationships, r => (string?)r.Attribute("Type") == CommentsRelationshipType);
@@ -351,10 +357,10 @@ public class DocxReviewerTests
         var report = ReportWith(new ValidationError { RuleName = "LectureDocument", Message = "Erreur." });
 
         // Act
-        using var output = Review(source, report, out int commentsAdded);
+        using var output = Review(source, report, out ReviewResult result);
 
         // Assert
-        Assert.Equal(0, commentsAdded);
+        Assert.Equal(0, result.Comments);
         Assert.False(HasPart(output, "word/comments.xml"));
     }
 
@@ -393,10 +399,10 @@ public class DocxReviewerTests
         var report = ReportWith(Error("ApostropheDroite", 0, entryName: "word/footnotes.xml"));
 
         // Act
-        using var output = Review(source, report, out int commentsAdded);
+        using var output = Review(source, report, out ReviewResult result);
 
         // Assert
-        Assert.Equal(1, commentsAdded);
+        Assert.Equal(1, result.Comments);
         var paragraph = ReadPart(output, "word/footnotes.xml").Descendants(W + "p").Single();
         Assert.Single(paragraph.Elements(W + "commentRangeStart"));
         // La partie notes doit elle aussi pouvoir atteindre word/comments.xml
@@ -615,10 +621,10 @@ public class DocxReviewerTests
         var report = ReportWith(Error("ApostropheDroite", 0, offset: offset, length: length));
 
         // Act
-        using var output = Review(source, report, out int commentsAdded);
+        using var output = Review(source, report, out ReviewResult result);
 
         // Assert — on annote quand même, sur le paragraphe entier
-        Assert.Equal(1, commentsAdded);
+        Assert.Equal(1, result.Comments);
         var paragraph = ReadPart(output, "word/document.xml").Descendants(W + "p").Single();
         Assert.Equal("Un paragraphe entier.", AnchoredText(paragraph, 1));
     }
@@ -652,12 +658,226 @@ public class DocxReviewerTests
         source.Position = 0;
 
         // Act
-        using var output = Review(source, report, out int commentsAdded);
+        using var output = Review(source, report, out ReviewResult result);
 
         // Assert — apostrophe droite + Titre1 manquant
-        Assert.Equal(report.Errors.Count, commentsAdded);
+        Assert.Equal(report.Errors.Count, result.Comments);
         var paragraphs = ReadPart(output, "word/document.xml").Descendants(W + "p").ToList();
         Assert.Single(paragraphs[1].Elements(W + "commentRangeStart"));   // l'apostrophe
         Assert.Single(paragraphs[0].Elements(W + "commentRangeStart"));   // Titre1 manquant, en tête
+    }
+
+    // --- Marques de révision -------------------------------------------------
+
+    [Fact]
+    public void Review_SuggestedDeletion_IsMarkedAsRevision()
+    {
+        // Arrange — une espace en fin de paragraphe
+        using var source = CreatePackageWithBody("<w:p><w:r><w:t xml:space=\"preserve\">Fin </w:t></w:r></w:p>");
+        var report = ReportWith(Error("EspaceFinParagraphe", 0,
+            offset: 3, length: 1, suggestion: SuggestedEdit.Delete(3, 1)));
+
+        // Act
+        using var output = Review(source, report, out ReviewResult result);
+
+        // Assert
+        Assert.Equal(1, result.Revisions);
+        var paragraph = ReadPart(output, "word/document.xml").Descendants(W + "p").Single();
+        var deletion = Assert.Single(paragraph.Descendants(W + "del"));
+        Assert.Equal("Scrubx", (string?)deletion.Attribute(W + "author"));
+        Assert.Equal("2026-08-28T10:00:00Z", (string?)deletion.Attribute(W + "date"));
+        Assert.Equal(" ", DeletedText(paragraph));
+        // Une fois la suppression acceptée, il ne reste que le texte voulu
+        Assert.Equal("Fin", ParagraphText(paragraph));
+    }
+
+    [Fact]
+    public void Review_SuggestedInsertion_IsMarkedAsRevision()
+    {
+        // Arrange — espace insécable manquante avant le point d'exclamation
+        using var source = CreatePackageWithBody("<w:p><w:r><w:t>Bonjour!</w:t></w:r></w:p>");
+        var report = ReportWith(Error("EspaceInsecablePonctuation", 0,
+            offset: 6, length: 2, suggestion: SuggestedEdit.Insert(7, "\u00A0")));
+
+        // Act
+        using var output = Review(source, report, out ReviewResult result);
+
+        // Assert
+        Assert.Equal(1, result.Revisions);
+        var paragraph = ReadPart(output, "word/document.xml").Descendants(W + "p").Single();
+        var insertion = Assert.Single(paragraph.Descendants(W + "ins"));
+        Assert.Equal("\u00A0", string.Concat(insertion.Descendants(W + "t").Select(t => t.Value)));
+        Assert.Equal("Bonjour\u00A0!", ParagraphText(paragraph));
+    }
+
+    [Fact]
+    public void Review_SubstitutionIsNotAppliedYet()
+    {
+        // Arrange — un w:del suivi d'un w:ins reste en attente de la
+        // vérification du comportement de Word (ROADMAP.md §3)
+        using var source = CreatePackageWithBody("<w:p><w:r><w:t>C'est l'été.</w:t></w:r></w:p>");
+        var report = ReportWith(Error("ApostropheDroite", 0,
+            offset: 1, length: 1, suggestion: SuggestedEdit.Replace(1, 1, "\u2019")));
+
+        // Act
+        using var output = Review(source, report, out ReviewResult result);
+
+        // Assert — l'anomalie est signalée, mais pas corrigée
+        Assert.Equal(0, result.Revisions);
+        Assert.Equal(1, result.Comments);
+        var paragraph = ReadPart(output, "word/document.xml").Descendants(W + "p").Single();
+        Assert.Empty(paragraph.Descendants(W + "ins"));
+        Assert.Empty(paragraph.Descendants(W + "del"));
+        Assert.Equal("C'est l'été.", ParagraphText(paragraph));
+    }
+
+    [Fact]
+    public void Review_DeletionKeepsCommentMarkersOutside()
+    {
+        // Arrange — le schéma n'admet pas de marque de commentaire dans un w:del
+        using var source = CreatePackageWithBody("<w:p><w:r><w:t xml:space=\"preserve\">Fin </w:t></w:r></w:p>");
+        var report = ReportWith(Error("EspaceFinParagraphe", 0,
+            offset: 3, length: 1, suggestion: SuggestedEdit.Delete(3, 1)));
+
+        // Act
+        using var output = Review(source, report, out _);
+
+        // Assert
+        var paragraph = ReadPart(output, "word/document.xml").Descendants(W + "p").Single();
+        var deletion = Assert.Single(paragraph.Descendants(W + "del"));
+        Assert.Empty(deletion.Descendants(W + "commentRangeStart"));
+        Assert.Empty(deletion.Descendants(W + "commentRangeEnd"));
+        Assert.Empty(deletion.Descendants(W + "commentReference"));
+        // Le commentaire couvre toujours le texte supprimé
+        Assert.Single(paragraph.Elements(W + "commentRangeStart"));
+        Assert.Single(paragraph.Elements(W + "commentRangeEnd"));
+    }
+
+    [Fact]
+    public void Review_SuggestedStyleChange_RecordsPreviousProperties()
+    {
+        // Arrange
+        using var source = CreatePackageWithBody(
+            "<w:p><w:pPr><w:pStyle w:val=\"Citation\"/></w:pPr><w:r><w:t>Un extrait.</w:t></w:r></w:p>");
+        var report = ReportWith(Error("StyleParagrapheInvalide", 0,
+            suggestion: SuggestedEdit.ParagraphStyle("Normal")));
+
+        // Act
+        using var output = Review(source, report, out ReviewResult result);
+
+        // Assert
+        Assert.Equal(1, result.Revisions);
+        var properties = ReadPart(output, "word/document.xml").Descendants(W + "pPr").First();
+        Assert.Equal("Normal", (string?)properties.Element(W + "pStyle")?.Attribute(W + "val"));
+
+        var change = Assert.Single(properties.Elements(W + "pPrChange"));
+        Assert.Equal("Scrubx", (string?)change.Attribute(W + "author"));
+        Assert.Equal("Citation",
+            (string?)change.Element(W + "pPr")?.Element(W + "pStyle")?.Attribute(W + "val"));
+        // w:pPrChange ferme la séquence des propriétés
+        Assert.Equal(W + "pPrChange", properties.Elements().Last().Name);
+    }
+
+    [Fact]
+    public void Review_SuggestedPageBreakRemoval_RecordsPreviousProperties()
+    {
+        // Arrange
+        using var source = CreatePackageWithBody(
+            "<w:p><w:pPr><w:pageBreakBefore/></w:pPr><w:r><w:t>Un paragraphe.</w:t></w:r></w:p>");
+        var report = ReportWith(Error("SautDePageDetecte", 0, suggestion: SuggestedEdit.RemovePageBreak()));
+
+        // Act
+        using var output = Review(source, report, out ReviewResult result);
+
+        // Assert
+        Assert.Equal(1, result.Revisions);
+        var properties = ReadPart(output, "word/document.xml").Descendants(W + "pPr").First();
+        Assert.Null(properties.Element(W + "pageBreakBefore"));
+
+        var change = Assert.Single(properties.Elements(W + "pPrChange"));
+        Assert.NotNull(change.Element(W + "pPr")?.Element(W + "pageBreakBefore"));
+    }
+
+    [Fact]
+    public void Review_AppliesSuggestionsRightToLeft()
+    {
+        // Arrange — deux suppressions dans le même paragraphe
+        using var source = CreatePackageWithBody(
+            "<w:p><w:r><w:t xml:space=\"preserve\">A  B  C</w:t></w:r></w:p>");
+        var report = ReportWith(
+            Error("DoubleEspace", 0, offset: 1, length: 2, suggestion: SuggestedEdit.Delete(2, 1)),
+            Error("DoubleEspace", 0, offset: 4, length: 2, suggestion: SuggestedEdit.Delete(5, 1)));
+
+        // Act
+        using var output = Review(source, report, out ReviewResult result);
+
+        // Assert — les deux marques sont posées, sur les bonnes espaces
+        Assert.Equal(2, result.Revisions);
+        var paragraph = ReadPart(output, "word/document.xml").Descendants(W + "p").Single();
+        Assert.Equal("  ", DeletedText(paragraph));
+        Assert.Equal("A B C", ParagraphText(paragraph));
+    }
+
+    [Fact]
+    public void Review_OverlappingSuggestions_AppliesOnlyOne()
+    {
+        // Arrange — l'espace en trop est aussi l'espace de fin de paragraphe
+        using var source = CreatePackageWithBody("<w:p><w:r><w:t xml:space=\"preserve\">Fin  </w:t></w:r></w:p>");
+        var report = ReportWith(
+            Error("DoubleEspace", 0, offset: 3, length: 2, suggestion: SuggestedEdit.Delete(4, 1)),
+            Error("EspaceFinParagraphe", 0, offset: 4, length: 1, suggestion: SuggestedEdit.Delete(4, 1)));
+
+        // Act
+        using var output = Review(source, report, out ReviewResult result);
+
+        // Assert — deux commentaires, une seule marque
+        Assert.Equal(2, result.Comments);
+        Assert.Equal(1, result.Revisions);
+        var paragraph = ReadPart(output, "word/document.xml").Descendants(W + "p").Single();
+        Assert.Equal(" ", DeletedText(paragraph));
+    }
+
+    [Fact]
+    public void Review_RevisionIdsDoNotCollideWithExistingOnes()
+    {
+        // Arrange — le document porte déjà une révision d'un relecteur humain
+        using var source = CreatePackageWithBody(
+            "<w:p><w:ins w:id=\"42\" w:author=\"Relecteur\" w:date=\"2026-08-01T09:00:00Z\">"
+            + "<w:r><w:t>Ajout. </w:t></w:r></w:ins>"
+            + "<w:r><w:t xml:space=\"preserve\">Fin </w:t></w:r></w:p>");
+        var report = ReportWith(Error("EspaceFinParagraphe", 0,
+            offset: 10, length: 1, suggestion: SuggestedEdit.Delete(10, 1)));
+
+        // Act
+        using var output = Review(source, report, out _);
+
+        // Assert
+        var paragraph = ReadPart(output, "word/document.xml").Descendants(W + "p").Single();
+        var deletion = Assert.Single(paragraph.Descendants(W + "del"));
+        Assert.True(int.Parse((string)deletion.Attribute(W + "id")!) > 42);
+        // La révision existante est intacte
+        Assert.Single(paragraph.Descendants(W + "ins"), i => (string?)i.Attribute(W + "author") == "Relecteur");
+    }
+
+    [Fact]
+    public void Review_EndToEnd_MarksWhatTheValidatorSuggested()
+    {
+        // Arrange
+        using var source = CreatePackageWithBody(
+            "<w:p><w:pPr><w:pStyle w:val=\"Titre1\"/></w:pPr><w:r><w:t>Titre</w:t></w:r></w:p>"
+            + "<w:p><w:r><w:t xml:space=\"preserve\">Une phrase. </w:t></w:r></w:p>");
+        var report = DocxValidator.Validate(source);
+        source.Position = 0;
+
+        // Act
+        using var output = Review(source, report, out ReviewResult result);
+
+        // Assert
+        Assert.Equal("EspaceFinParagraphe", Assert.Single(report.Errors).RuleName);
+        Assert.Equal(1, result.Comments);
+        Assert.Equal(1, result.Revisions);
+        var paragraph = ReadPart(output, "word/document.xml").Descendants(W + "p").Last();
+        Assert.Equal(" ", DeletedText(paragraph));
+        Assert.Equal("Une phrase.", ParagraphText(paragraph));
     }
 }

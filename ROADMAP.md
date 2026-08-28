@@ -120,18 +120,22 @@ Choix faits en cours de route, non prévus par la roadmap initiale :
   remplacer la partie.
 - **Ancrage dans les notes.** Une anomalie détectée dans
   `word/footnotes.xml` / `endnotes.xml` est ancrée dans cette partie-là, qui
-  reçoit sa propre relation vers `comments.xml`. **À valider dans Word**
-  (cf. §3, deuxième point de vérification).
+  reçoit sa propre relation vers `comments.xml`. **Toujours à valider dans
+  Word** (cf. §3, deuxième point de vérification) : le document d'essai n'en
+  contenait pas.
 - **`Review` refuse d'écrire sur le fichier source** (`ArgumentException`).
 - **Chargement `PreserveWhitespace` + sauvegarde `DisableFormatting`** pour
   que la recopie ne réindente rien : une indentation ajoutée dans un `w:p`
   modifierait le texte rendu par Word.
 
-**Critère de fin — atteint côté structure, reste la vérification Word :**
-sur `mon-roman-2026-05-21.docx` (5 anomalies), le fichier produit contient
-5 commentaires ancrés sur les bons paragraphes, `word/comments.xml` est la
-seule partie ajoutée, et le texte de `document.xml` est identique caractère
-pour caractère à l'original. **Ouverture dans Word non encore faite.**
+**Critère de fin — atteint.** Sur `mon-roman-2026-05-21.docx` (5 anomalies),
+le fichier produit contient 5 commentaires ancrés sur les bons paragraphes,
+`word/comments.xml` est la seule partie ajoutée, et le texte de
+`document.xml` est identique caractère pour caractère à l'original.
+Ouverture dans Word validée par l'utilisateur le 2026-08-28.
+
+Réserve : le document d'essai ne contenait pas de note de bas de page, donc
+l'ancrage dans `word/footnotes.xml` reste non vérifié dans Word (cf. §3).
 
 ### Étape 2 — Ancrage précis au caractère
 
@@ -217,3 +221,4 @@ paragraphe entier.
 |---|---|---|
 | 2026-08-28 | — | Cadrage : mode relecture (suggestions) retenu, correction automatique écartée. Rédaction de cette roadmap. Aucun code écrit. |
 | 2026-08-28 | 1 | Étape 1 terminée : `DocxReviewer`, position des anomalies dans `ValidationError`, 20 tests (106 au total, verts). Fichier d'essai produit à partir de `mon-roman-2026-05-21.docx`. Reste à ouvrir dans Word. |
+| 2026-08-28 | 1 | Étape 1 validée par l'utilisateur après ouverture dans Word. Reste en suspens : le cas des notes de bas de page, absent du document d'essai. |

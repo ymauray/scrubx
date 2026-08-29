@@ -60,7 +60,9 @@ faire à cet unique endroit.
   l'exposent aussi, via `POST /api/revisions` et le bouton
   « Télécharger la copie annotée » du rapport.
 - `Scrubx.Desktop` : fonctionnel, publié en exécutable autonome Windows
-  (`win-x64`, self-contained, single-file).
+  (`win-x64`, self-contained, single-file). **Une vérification reste due**
+  sur une machine Windows : le téléchargement de la copie annotée depuis
+  l'interface — cf. `SPECIFICATION.md` §6, point 9.
 - Portage macOS (`Scrubx.Mac`) : **non démarré**, à faire sur une machine
   macOS réelle (Xcode + workload MAUI requis, cf. `SPECIFICATION.md` §8).
 - CI/CD : en place (`.github/workflows/tests.yml` sur chaque PR, requis

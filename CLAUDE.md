@@ -45,7 +45,7 @@ faire à cet unique endroit.
 - Avant de pousser une modification d'UI, la tester dans un navigateur
   (via les outils Claude in Chrome) — ne pas se fier uniquement à la
   compilation.
-- `dotnet test` doit passer (129 tests actuellement) avant tout commit
+- `dotnet test` doit passer (141 tests actuellement) avant tout commit
   touchant `Scrubx.Core`.
 
 ## État du projet

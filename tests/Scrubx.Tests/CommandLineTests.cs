@@ -331,4 +331,77 @@ public class CommandLineTests
         Assert.Equal(["GDROIT"], options.ForcedRuleCodes);
         Assert.Null(options.ErrorMessage);
     }
+
+    [Fact]
+    public void Parse_WithRevisionsOption_ReturnsWriteRevisionsWithoutPath()
+    {
+        // Arrange
+        string[] args = ["document.docx", "--revisions"];
+
+        // Act
+        var options = ArgumentParser.Parse(args);
+
+        // Assert
+        Assert.True(options.WriteRevisions);
+        Assert.Null(options.RevisionsPath);
+        Assert.Null(options.ErrorMessage);
+    }
+
+    [Fact]
+    public void Parse_WithRevisionsPath_ReturnsThatPath()
+    {
+        // Arrange
+        string[] args = ["document.docx", "--revisions=copie.docx"];
+
+        // Act
+        var options = ArgumentParser.Parse(args);
+
+        // Assert
+        Assert.True(options.WriteRevisions);
+        Assert.Equal("copie.docx", options.RevisionsPath);
+        Assert.Equal("document.docx", options.InputPath);
+    }
+
+    [Fact]
+    public void Parse_WithEmptyRevisionsPath_ReturnsErrorMessage()
+    {
+        // Arrange
+        string[] args = ["document.docx", "--revisions="];
+
+        // Act
+        var options = ArgumentParser.Parse(args);
+
+        // Assert
+        Assert.NotNull(options.ErrorMessage);
+        Assert.Contains("Chemin manquant", options.ErrorMessage);
+    }
+
+    [Fact]
+    public void Parse_WithAuthorOption_ReturnsAuthor()
+    {
+        // Arrange
+        string[] args = ["document.docx", "--revisions", "--author", "Yannick Mauray"];
+
+        // Act
+        var options = ArgumentParser.Parse(args);
+
+        // Assert
+        Assert.Equal("Yannick Mauray", options.Author);
+        Assert.True(options.WriteRevisions);
+        Assert.Null(options.ErrorMessage);
+    }
+
+    [Fact]
+    public void Parse_WithAuthorOptionWithoutName_ReturnsErrorMessage()
+    {
+        // Arrange
+        string[] args = ["document.docx", "--author"];
+
+        // Act
+        var options = ArgumentParser.Parse(args);
+
+        // Assert
+        Assert.NotNull(options.ErrorMessage);
+        Assert.Contains("Nom manquant", options.ErrorMessage);
+    }
 }

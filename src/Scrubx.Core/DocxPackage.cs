@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Text;
+using System.Xml;
 using System.Xml.Linq;
 
 namespace Scrubx.Cli;
@@ -83,9 +85,23 @@ internal sealed class DocxPackage
         }
     }
 
+    private static readonly UTF8Encoding Utf8WithoutBom = new(encoderShouldEmitUTF8Identifier: false);
+
     private static void Write(XDocument document, Stream target)
     {
-        // DisableFormatting : la moindre indentation ajoutée modifierait le texte du document.
-        document.Save(target, SaveOptions.DisableFormatting);
+        // Word écrit ses parties sans BOM et déclare « UTF-8 » : on s'aligne dessus plutôt
+        // que sur le format par défaut de XDocument.Save.
+        var standalone = document.Declaration?.Standalone ?? "yes";
+        var declaration = Utf8WithoutBom.GetBytes($"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"{standalone}\"?>");
+        target.Write(declaration, 0, declaration.Length);
+
+        // Indent = false : la moindre indentation ajoutée modifierait le texte du document.
+        using var writer = XmlWriter.Create(target, new XmlWriterSettings
+        {
+            Encoding = Utf8WithoutBom,
+            Indent = false,
+            OmitXmlDeclaration = true,
+        });
+        document.Save(writer);
     }
 }

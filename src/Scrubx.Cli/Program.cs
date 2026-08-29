@@ -110,6 +110,8 @@ var report = DocxValidator.Validate(fileInfo.FullName, enabledRules);
 var errors = report.Errors.Where(e => !e.IsWarning).ToList();
 var warnings = report.Errors.Where(e => e.IsWarning).ToList();
 
+int exitCode = 0;
+
 if (errors.Any())
 {
     Console.ForegroundColor = ConsoleColor.Red;
@@ -127,23 +129,87 @@ if (errors.Any())
         DisplayWarnings(warnings, options.ShowWarnings, options.Verbose);
         Console.ResetColor();
     }
-    return 4;
+    exitCode = 4;
 }
-
-if (warnings.Any())
+else if (warnings.Any())
 {
     Console.ForegroundColor = ConsoleColor.Yellow;
     Console.WriteLine("Le document est valide, mais des avertissements ont été relevés :");
     Console.WriteLine();
     DisplayWarnings(warnings, options.ShowWarnings, options.Verbose);
     Console.ResetColor();
-    return 0;
+}
+else
+{
+    Console.ForegroundColor = ConsoleColor.Green;
+    Console.WriteLine("Félicitations ! Le document est parfaitement valide.");
+    Console.ResetColor();
 }
 
-Console.ForegroundColor = ConsoleColor.Green;
-Console.WriteLine("Félicitations ! Le document est parfaitement valide.");
-Console.ResetColor();
-return 0;
+if (options.WriteRevisions)
+{
+    Console.WriteLine();
+    var destination = options.RevisionsPath ?? DefaultRevisionsPath(fileInfo);
+    if (!WriteRevisions(fileInfo.FullName, destination, report, options.Author))
+    {
+        return 5;
+    }
+}
+
+return exitCode;
+
+static string DefaultRevisionsPath(FileInfo source) =>
+    Path.Combine(
+        source.DirectoryName ?? ".",
+        Path.GetFileNameWithoutExtension(source.Name) + "-relu.docx");
+
+static bool WriteRevisions(string sourcePath, string destinationPath, ValidationReport report, string? author)
+{
+    if (!report.Errors.Any(e => e.Fix != null))
+    {
+        Console.ForegroundColor = ConsoleColor.Yellow;
+        Console.WriteLine("Aucune correction automatique à proposer : aucune copie annotée n'a été écrite.");
+        Console.ResetColor();
+        return true;
+    }
+
+    if (File.Exists(destinationPath))
+    {
+        Console.ForegroundColor = ConsoleColor.Red;
+        Console.WriteLine($"Erreur : Le fichier '{destinationPath}' existe déjà. Supprimez-le ou indiquez un autre nom avec --revisions=<fichier>.");
+        Console.ResetColor();
+        return false;
+    }
+
+    var revisionOptions = new RevisionOptions();
+    if (!string.IsNullOrWhiteSpace(author)) revisionOptions.Author = author;
+
+    RevisionResult result;
+    try
+    {
+        result = DocxRevisionWriter.Write(sourcePath, destinationPath, report, revisionOptions);
+    }
+    catch (Exception ex) when (ex is DocxRevisionException or IOException or UnauthorizedAccessException)
+    {
+        Console.ForegroundColor = ConsoleColor.Red;
+        Console.WriteLine($"Erreur : {ex.Message}");
+        Console.ResetColor();
+        return false;
+    }
+
+    Console.ForegroundColor = ConsoleColor.Green;
+    Console.WriteLine($"Copie annotée écrite dans '{destinationPath}' : {result.RevisionCount} révision(s) et {result.CommentCount} commentaire(s).");
+    Console.ResetColor();
+
+    if (result.SkippedCount > 0)
+    {
+        Console.ForegroundColor = ConsoleColor.Yellow;
+        Console.WriteLine($"{result.SkippedCount} correction(s) n'ont pas pu être écrites et restent à traiter à la main.");
+        Console.ResetColor();
+    }
+
+    return true;
+}
 
 static bool TryResolveRuleCodes(System.Collections.Generic.List<string> codes, out System.Collections.Generic.HashSet<string> ruleNames, out string? errorMessage)
 {
@@ -227,6 +293,7 @@ static void PrintUsage()
 {
     Console.WriteLine("Utilisation :");
     Console.WriteLine("  Scrubx.Cli <fichier.docx> [-v|--verbose] [-w|--warning] [-i|--ignore <code>[,<code>...]] [-f|--force <code>[,<code>...]]");
+    Console.WriteLine("                            [--revisions[=<fichier.docx>]] [--author <nom>]");
     Console.WriteLine("  Scrubx.Cli -r|--show-rules");
     Console.WriteLine("  Scrubx.Cli -c|--create-config");
     Console.WriteLine("  Scrubx.Cli -h|--help");

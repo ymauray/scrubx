@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
@@ -94,6 +95,7 @@ public static class DocxRevisionWriter
 
             // De droite à gauche : les corrections déjà appliquées ne décalent pas
             // les offsets de celles qui restent à traiter.
+            var written = new List<(XElement First, XElement Last, ValidationError Error)>();
             int limit = int.MaxValue;
             foreach (var error in group.OrderByDescending(e => e.Fix!.Start).ThenByDescending(e => e.Fix!.Length))
             {
@@ -111,16 +113,22 @@ public static class DocxRevisionWriter
                     var (first, last) = ApplyFix(paragraph, fix, options.Author, date, ref revisionId);
                     limit = fix.Start;
                     applied++;
-
-                    // Un commentaire par erreur, couvrant la suppression et l'insertion.
-                    var commentId = comments.Add(CommentText(error));
-                    first.AddBeforeSelf(DocxComments.RangeStart(commentId));
-                    last.AddAfterSelf(DocxComments.RangeEnd(commentId));
+                    written.Add((first, last, error));
                 }
                 catch (ParagraphStructureException)
                 {
                     skipped++;
                 }
+            }
+
+            // Un commentaire par erreur, couvrant la suppression et l'insertion, numérotés
+            // dans l'ordre du document (l'écriture, elle, s'est faite à rebours).
+            written.Reverse();
+            foreach (var (first, last, error) in written)
+            {
+                var commentId = comments.Add(CommentText(error));
+                first.AddBeforeSelf(DocxComments.RangeStart(commentId));
+                last.AddAfterSelf(DocxComments.RangeEnd(commentId));
             }
         }
 
@@ -164,7 +172,11 @@ public static class DocxRevisionWriter
 
         if (fix.Replacement.Length == 0) return (deletion!, deletion!);
 
-        var model = deletion?.Descendants(W + "r").FirstOrDefault();
+        // Insertion pure : il faut d'abord ouvrir une frontière de run à l'offset visé.
+        var anchor = deletion == null ? new ParagraphTextMap(paragraph).SplitForInsertion(fix.Start) : null;
+
+        // Le texte inséré reprend la mise en forme du passage qu'il remplace ou qu'il rejoint.
+        var model = deletion?.Descendants(W + "r").FirstOrDefault() ?? anchor;
         var insertedRun = new XElement(W + "r");
         var rPr = model?.Element(W + "rPr");
         if (rPr != null) insertedRun.Add(new XElement(rPr));
@@ -178,8 +190,6 @@ public static class DocxRevisionWriter
             return (deletion, insertion);
         }
 
-        // Insertion pure : il faut d'abord ouvrir une frontière de run à l'offset visé.
-        var anchor = new ParagraphTextMap(paragraph).SplitForInsertion(fix.Start);
         if (anchor != null)
         {
             anchor.AddBeforeSelf(insertion);

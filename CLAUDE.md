@@ -23,7 +23,7 @@ src/Scrubx.Core/    Logique de validation partagée (DocxValidator, RuleCatalog)
 src/Scrubx.Cli/     Application en ligne de commande
 src/Scrubx.Web/     API ASP.NET Core (WebAppFactory) + frontend statique (wwwroot/)
 src/Scrubx.Desktop/ Application Windows native (WPF + WebView2), héberge Scrubx.Web en process
-tests/Scrubx.Tests/ Tests xUnit (couvre Scrubx.Core via Scrubx.Cli)
+tests/Scrubx.Tests/ Tests xUnit (couvre Scrubx.Core via Scrubx.Cli, et l'API de Scrubx.Web)
 deploy/             Exemples de config pour la mise en production (nginx, systemd)
 ```
 
@@ -45,7 +45,7 @@ faire à cet unique endroit.
 - Avant de pousser une modification d'UI, la tester dans un navigateur
   (via les outils Claude in Chrome) — ne pas se fier uniquement à la
   compilation.
-- `dotnet test` doit passer (141 tests actuellement) avant tout commit
+- `dotnet test` doit passer (155 tests actuellement) avant tout commit
   touchant `Scrubx.Core`.
 
 ## État du projet

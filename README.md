@@ -42,6 +42,8 @@ dotnet run --project src/Scrubx.Cli -- mon-document.docx
 dotnet run --project src/Scrubx.Cli -- mon-document.docx -v -w   # verbose + avertissements détaillés
 dotnet run --project src/Scrubx.Cli -- mon-document.docx -i VIRGET,STYLEINV   # ignorer des règles par leur code
 dotnet run --project src/Scrubx.Cli -- mon-document.docx -f VIRGET   # forcer une règle désactivée dans scrubx.json
+dotnet run --project src/Scrubx.Cli -- mon-document.docx --revisions   # écrit mon-document-relu.docx, corrections en révisions suivies
+dotnet run --project src/Scrubx.Cli -- mon-document.docx --revisions=relu.docx --author "Jane Doe"
 dotnet run --project src/Scrubx.Cli -- --show-rules   # lister les codes de règles disponibles
 dotnet run --project src/Scrubx.Cli -- --create-config   # créer/compléter scrubx.json (règles activées par défaut)
 dotnet run --project src/Scrubx.Cli -- --help
@@ -50,6 +52,14 @@ dotnet run --project src/Scrubx.Cli -- --help
 `scrubx.json`, s'il existe dans le répertoire courant, définit l'état
 activé/désactivé de chaque règle (par son code) au lancement ; `-i/--ignore`
 s'applique ensuite par-dessus. Détails : [`SPECIFICATION.md`](SPECIFICATION.md) §4.
+
+`--revisions` produit une **copie** du document (l'original n'est jamais
+modifié) dans laquelle chaque correction est inscrite en révision suivie,
+accompagnée d'un commentaire rappelant la règle en cause : il ne reste qu'à
+ouvrir le fichier dans Word et à accepter ou refuser chaque proposition.
+Toutes les règles ne savent pas se corriger seules (les styles, les sauts
+de page ou la virgule avant « et », par exemple, restent au rapport
+console) — voir [`SPECIFICATION.md`](SPECIFICATION.md) §3.5.
 
 ### Application Web
 

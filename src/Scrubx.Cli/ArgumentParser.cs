@@ -11,6 +11,15 @@ public class CommandLineOptions
     public bool ShowWarnings { get; set; }
     public List<string> IgnoredRuleCodes { get; set; } = new();
     public List<string> ForcedRuleCodes { get; set; } = new();
+
+    /// <summary>Écrire une copie du document avec les corrections en révisions suivies.</summary>
+    public bool WriteRevisions { get; set; }
+
+    /// <summary>Chemin de la copie annotée, ou <c>null</c> pour « &lt;source&gt;-relu.docx ».</summary>
+    public string? RevisionsPath { get; set; }
+
+    /// <summary>Auteur affiché par Word pour les révisions et les commentaires.</summary>
+    public string? Author { get; set; }
 }
 
 public static class ArgumentParser
@@ -44,6 +53,35 @@ public static class ArgumentParser
                 else
                 {
                     options.ErrorMessage = "Erreur : Code(s) de règle manquant(s) après l'option -f/--force.";
+                    return options;
+                }
+            }
+            else if (arg == "--revisions" || arg.StartsWith("--revisions="))
+            {
+                options.WriteRevisions = true;
+
+                // La forme « --revisions <fichier> » serait ambiguë avec le fichier à analyser :
+                // le chemin de sortie se donne avec un signe égal.
+                if (arg.Length > "--revisions".Length)
+                {
+                    var path = arg["--revisions=".Length..];
+                    if (string.IsNullOrWhiteSpace(path))
+                    {
+                        options.ErrorMessage = "Erreur : Chemin manquant après l'option --revisions=.";
+                        return options;
+                    }
+                    options.RevisionsPath = path;
+                }
+            }
+            else if (arg == "--author")
+            {
+                if (i + 1 < args.Length)
+                {
+                    options.Author = args[++i];
+                }
+                else
+                {
+                    options.ErrorMessage = "Erreur : Nom manquant après l'option --author.";
                     return options;
                 }
             }

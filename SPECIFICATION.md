@@ -49,11 +49,19 @@ tirets invalides en tête de liste.
 - `ValidationReport { List<ValidationError> Errors; bool IsValid }`
   `IsValid` est vrai si aucune erreur n'est présente (`IsWarning == false`) ;
   les avertissements n'invalident pas le document.
-- `ValidationError { RuleName, Message, Context, IsWarning }`
+- `ValidationError { RuleName, Message, Context, IsWarning, PartName,
+  ParagraphIndex, Start, Length, Fix }`
   `Context` est un extrait textuel généré par `GetContext(...)` : 5 mots
   avant/après l'anomalie, avec l'anomalie encadrée par `>>>...<<<`. Les
   séquences d'espaces sont réécrites en description lisible
   (ex. `[2 espaces standards]`).
+  `PartName`, `ParagraphIndex`, `Start` et `Length` situent l'anomalie
+  (offsets dans le texte concaténé du paragraphe, `ParagraphIndex` suivant
+  l'ordre de `Descendants(w:p)` de la partie).
+  `Fix` est un `TextEdit(Start, Length, Replacement)` — la correction que la
+  règle sait déduire, ou `null` si elle n'en propose pas. Il est indépendant
+  de `Start`/`Length` : la correction peut couvrir une plage plus large que
+  ce qui est signalé (voir §3.5).
 
 ### 3.3 Règles implémentées (par paragraphe, sur le texte concaténé des `w:t`)
 
@@ -87,6 +95,57 @@ Notes d'implémentation notables :
   et puce de liste (`w:numPr`) dont le `lvlText` résolu via `numbering.xml`
   commence par `-`/`–`.
 
+### 3.5 Copie annotée (`DocxRevisionWriter`)
+
+`DocxRevisionWriter.Write(source, destination, report, options)` (chemins ou
+`Stream`) produit une copie du document dans laquelle chaque `Fix` devient
+une **révision suivie** encadrée d'un **commentaire Word**. C'est ce que la
+CLI expose via `--revisions` (§4).
+
+Trois collaborateurs, tous dans `Scrubx.Core` :
+
+- **`ParagraphTextMap`** relie les offsets des règles aux `w:t` qui portent
+  le texte et découpe les runs (`SplitRange`, `SplitForInsertion`) pour
+  qu'une plage de caractères corresponde à des runs entiers, en conservant
+  `rPr` et `xml:space`. L'ordre de parcours doit rester identique à celui du
+  validateur (`p.Descendants(w:t)`) : les offsets en dépendent.
+- **`DocxRevisionWriter`** écrit un `w:del` (les `w:t` deviennent
+  `w:delText`) suivi d'un `w:ins` pour chaque correction.
+- **`DocxComments`** crée ou complète `word/comments.xml`,
+  `commentsExtended.xml` et `commentsIds.xml`, les déclare dans
+  `[Content_Types].xml` et `word/_rels/document.xml.rels`, et ajoute les
+  styles `Marquedecommentaire`, `Commentaire` et `CommentaireCar` s'ils
+  manquent. Le texte du commentaire est `CODE : Titre` (§3.3).
+- **`DocxPackage`** recopie l'archive source à l'octet près, ne réécrivant
+  que les parties modifiées (sans BOM, déclarées en UTF-8, sans indentation).
+
+Règles du jeu :
+
+- **Un commentaire par erreur corrigée**, couvrant la suppression *et*
+  l'insertion ; les commentaires sont numérotés dans l'ordre du document.
+- Les corrections d'un même paragraphe sont appliquées **de droite à
+  gauche** : les offsets restants ne sont ainsi jamais invalidés.
+- Deux corrections qui se **chevauchent** ne sont écrites qu'une fois (la
+  plus à droite gagne) ; les autres sont comptées dans `SkippedCount`. C'est
+  le cas d'un paragraphe finissant par plusieurs espaces (`DESPACE` et
+  `EFINPAR`) : `EFINPAR` supprime toute la suite finale, ce qui règle les
+  deux.
+- Les règles **sans correction automatique** (`Fix == null`) n'apparaissent
+  que dans le rapport console : `VIRGET` (jugement humain), `STYLEINV`,
+  `TITRE1`, `SAUTPAGE` (structurelles), la puce de liste invalide de `TIRET`
+  (elle vit dans `numbering.xml`), et les guillemets en tout début/fin de
+  paragraphe pour `EGUIL` (les corriger créerait une autre erreur).
+- Seul `word/document.xml` est traité (pas les notes de bas de page/fin).
+- Un document contenant **déjà** des révisions suivies est refusé
+  (`DocxRevisionException`) : il faudrait sinon fusionner deux jeux de
+  révisions. Les commentaires déjà présents, eux, sont conservés.
+- `<w:trackRevisions/>` n'est **pas** activé dans la copie : sinon toutes
+  les frappes ultérieures de l'auteur seraient elles aussi enregistrées.
+
+L'invariant vérifié par les tests : accepter toutes les révisions produit un
+document que le validateur juge sans erreur ; les refuser toutes rend le
+texte d'origine à l'identique.
+
 ### 3.4 Chaînes de rendu (`Program.cs`)
 `GetRuleTitle` mappe chaque `RuleName` vers un libellé humain en français,
 affiché groupé par règle avec compteur d'occurrences. Le mode `--verbose`
@@ -96,6 +155,7 @@ affiche le `Context` de chaque occurrence individuelle.
 
 ```
 Scrubx.Cli <fichier.docx> [-v|--verbose] [-w|--warning] [-i|--ignore <code>[,<code>...]] [-f|--force <code>[,<code>...]]
+                          [--revisions[=<fichier.docx>]] [--author <nom>]
 Scrubx.Cli -r|--show-rules
 Scrubx.Cli -c|--create-config
 Scrubx.Cli -h|--help
@@ -117,6 +177,15 @@ Scrubx.Cli -h|--help
   `-i/--ignore` (répétable, codes séparés par virgules, code inconnu →
   erreur). Si un même code apparaît dans `-i` et `-f`, **`-f` l'emporte**
   (règle activée).
+- `--revisions[=<fichier.docx>]` : écrit une copie du document dans laquelle
+  les corrections sont inscrites en révisions suivies et commentées (§3.5).
+  Sans valeur, la copie est écrite à côté du document analysé, sous
+  `<source>-relu.docx`. Le chemin se donne **avec un signe égal** : la forme
+  `--revisions <fichier>` serait ambiguë avec l'argument positionnel. Un
+  fichier de sortie existant n'est jamais écrasé (code de sortie 5). Si
+  aucune règle ne propose de correction, aucun fichier n'est écrit.
+- `--author <nom>` : auteur affiché par Word pour les révisions et les
+  commentaires (`Scrubx` par défaut). Les initiales en sont déduites.
 - `-r/--show-rules` : affiche la liste des règles groupées par thème
   (`CODE  Titre`) puis quitte (code 0), sans requérir de fichier.
 - `-c/--create-config` : crée `scrubx.json` (règles activées par défaut) ou,
@@ -155,6 +224,7 @@ clé = `Code` de règle (§3.3), valeur = booléen :
 | 2 | Fichier introuvable |
 | 3 | Extension ≠ `.docx` |
 | 4 | Erreurs de validation détectées |
+| 5 | Échec de l'écriture de la copie annotée (`--revisions`) : fichier de sortie déjà présent, document déjà révisé, erreur d'E/S |
 
 ## 5. Tests
 
@@ -164,6 +234,11 @@ sur disque. Couverture actuelle : chaque règle a au moins un cas valide et
 un cas invalide ; cas limites testés (espace insécable vs standard, fine
 insécable, tabulation, listes numérotées, notes de bas de page vs corps
 du document).
+
+La copie annotée (§3.5) est couverte par
+`ParagraphTextMapTests` (découpage des runs), `DocxRevisionWriterTests`
+(l'aller-retour accepter/refuser) et `DocxCommentsTests` (parties,
+relations, styles, ancrage des commentaires).
 
 `tests/Scrubx.Tests/UnitTest1.cs` semble être un fichier de test généré par
 défaut par le template — à vérifier/nettoyer si vide ou obsolète.

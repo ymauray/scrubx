@@ -337,17 +337,10 @@ défaut par le template — à vérifier/nettoyer si vide ou obsolète.
 8. **Localisation** : tous les messages sont en français, en dur dans le
    code (`Program.cs` et `DocxValidator.cs`). Pas d'abstraction i18n pour
    l'instant.
-9. **À valider sur Windows : le téléchargement de la copie annotée dans
-   `Scrubx.Desktop`.** Le bouton « Télécharger la copie annotée » (§3.5)
-   fonctionne dans `Scrubx.Web`, vérifié en navigateur. Côté Desktop il
-   repose sur le comportement par défaut de WebView2, sans code spécifique
-   côté WPF — mais il n'a jamais été essayé : le projet ne se construit que
-   sur Windows (`net10.0-windows`) et la CI, sur `ubuntu-latest`, ne le
-   couvre pas davantage. À la première occasion sur une machine Windows :
-   analyser un document fautif, cliquer le bouton, et confirmer que
-   `<nom>-relu.docx` arrive bien dans le dossier de téléchargements. Si le
-   bandeau natif de WebView2 ne suffit pas, l'ajustement se ferait dans
-   `MainWindow.xaml.cs` via `CoreWebView2.DownloadStarting` (§7).
+
+Cette liste recense des **caractéristiques durables** de la conception, pas
+des tâches : le travail à faire est suivi dans les
+[issues GitHub](https://github.com/ymauray/scrubx/issues).
 
 ## 7. Application desktop native (`Scrubx.Desktop`, Windows)
 

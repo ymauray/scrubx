@@ -166,6 +166,30 @@ L'invariant vérifié par les tests : accepter toutes les révisions produit un
 document que le validateur juge sans erreur ; les refuser toutes rend le
 texte d'origine à l'identique.
 
+#### Exposition dans les trois applications
+
+| Application | Accès |
+|---|---|
+| `Scrubx.Cli` | `--revisions[=<fichier>]`, `--author <nom>` (§4) |
+| `Scrubx.Web` | `POST /api/revisions`, et le bouton « Télécharger la copie annotée » du rapport |
+| `Scrubx.Desktop` | le même bouton : la coquille héberge `WebAppFactory` et sert le même `wwwroot` |
+
+`POST /api/revisions` attend le même formulaire multipart que
+`POST /api/validate` (`file`, `disabledRules`), plus un champ facultatif
+`author`, et renvoie le `.docx` annoté en pièce jointe
+(`<nom>-relu.docx`). Réponses d'erreur : `400` si le document ne contient
+aucune correction automatisable, `409` s'il porte déjà des révisions
+suivies. `POST /api/validate` expose de son côté un `fixableCount`, qui
+indique au frontend s'il doit proposer le téléchargement.
+
+Le document n'est pas conservé entre les deux requêtes : le navigateur
+renvoie le fichier, comme pour l'analyse. Côté serveur, il est mis en
+mémoire une fois et relu pour la validation puis pour l'écriture.
+
+Dans `Scrubx.Desktop`, le téléchargement repose sur le comportement par
+défaut de WebView2 (enregistrement dans le dossier de téléchargements avec
+son bandeau natif) — aucun code spécifique côté WPF.
+
 ### 3.4 Chaînes de rendu (`Program.cs`)
 `GetRuleTitle` mappe chaque `RuleName` vers un libellé humain en français,
 affiché groupé par règle avec compteur d'occurrences. Le mode `--verbose`

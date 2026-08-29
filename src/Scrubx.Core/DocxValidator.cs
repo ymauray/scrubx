@@ -443,12 +443,20 @@ public static class DocxValidator
                         }
                     }
 
-                    // Check 4: non-breaking space before ! and ?
+                    // Check 4: non-breaking space before the French double punctuation marks ! ? : ;
                     for (int idx = 0; IsEnabled("EspaceInsecablePonctuation") && idx < text.Length; idx++)
                     {
                         char c = text[idx];
-                        if (c == '!' || c == '?')
+                        if (c == '!' || c == '?' || c == ':' || c == ';')
                         {
+                            // Un « : » ou un « ; » ne joue son rôle de ponctuation que suivi d'une
+                            // espace ou en fin de paragraphe : on ne signale ainsi ni « 12:30 »,
+                            // ni « https://… », ni « :-) ».
+                            if ((c == ':' || c == ';') && idx + 1 < text.Length && !IsSpace(text[idx + 1]))
+                            {
+                                continue;
+                            }
+
                             if (idx > 0)
                             {
                                 char prev = text[idx - 1];

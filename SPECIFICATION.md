@@ -74,7 +74,7 @@ pour les désactiver individuellement (`-i/--ignore`, voir §4).
 | `GuillemetDroit` | `GDROIT` | erreur | Guillemet droit `"` détecté (attendu : `«`/`»`) |
 | `TiretDebutInvalide` | `TIRET` | erreur | Paragraphe/puce commençant par `-` ou `–` (attendu : `—`) |
 | `EspaceInsecableManquante` | `EIMANQ` | erreur | `—` en début de ligne non suivi d'une espace insécable (` ` ou ` `) |
-| `EspaceInsecablePonctuation` | `EIPONC` | erreur | Espace insécable manquante avant `!` ou `?` |
+| `EspaceInsecablePonctuation` | `EIPONC` | erreur | Espace insécable manquante avant une ponctuation double (`!`, `?`, `:`, `;`) |
 | `EspaceGuillemet` | `EGUIL` | erreur | Espace insécable manquante autour de `«`/`»` |
 | `EspaceFinParagraphe` | `EFINPAR` | erreur | Paragraphe se terminant par un espace/tabulation |
 | `DoubleEspace` | `DESPACE` | erreur | 2+ espaces consécutives (standard, insécable, ou fine, mélangeables) |
@@ -91,6 +91,10 @@ Notes d'implémentation notables :
 - `EspaceInsecablePonctuation` ne se déclenche que si le caractère précédent
   est alphanumérique ou une ponctuation fermante (`)`, `]`, `}`, `»`, `”`, `’`, `'`) —
   pas en tout début de paragraphe.
+- `:` et `;` ne sont contrôlés que s'ils sont **suivis d'une espace ou en fin de
+  paragraphe** : sans cela, ils ne jouent pas un rôle de ponctuation et les
+  signaler produirait des faux positifs sur `12:30`, `https://…` ou `:-)`.
+  `!` et `?` n'ont pas cette restriction (comportement d'origine).
 - `TiretDebutInvalide` gère deux cas : texte brut commençant par `-`/`–`,
   et puce de liste (`w:numPr`) dont le `lvlText` résolu via `numbering.xml`
   commence par `-`/`–`.

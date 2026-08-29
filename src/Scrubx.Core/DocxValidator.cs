@@ -443,21 +443,23 @@ public static class DocxValidator
                         }
                     }
 
-                    // Check 4: non-breaking space before the French double punctuation marks ! ? : ;
-                    for (int idx = 0; IsEnabled("EspaceInsecablePonctuation") && idx < text.Length; idx++)
+                    // Checks 4 et 7: spacing around the French double punctuation marks ! ? : ;
+                    bool checkSpaceBefore = IsEnabled("EspaceInsecablePonctuation");
+                    bool checkSpaceAfter = IsEnabled("EspaceApresPonctuation");
+                    for (int idx = 0; (checkSpaceBefore || checkSpaceAfter) && idx < text.Length; idx++)
                     {
                         char c = text[idx];
                         if (c == '!' || c == '?' || c == ':' || c == ';')
                         {
-                            // Un « : » ou un « ; » ne joue son rôle de ponctuation que suivi d'une
-                            // espace ou en fin de paragraphe : on ne signale ainsi ni « 12:30 »,
-                            // ni « https://… », ni « :-) ».
-                            if ((c == ':' || c == ';') && idx + 1 < text.Length && !IsSpace(text[idx + 1]))
+                            // « : » et « ; » ne jouent pas un rôle de ponctuation dans « 12:30 »,
+                            // « https://… » ou « :-) » : ces emplois-là sont laissés tranquilles.
+                            if (IsSeparator(text, idx))
                             {
                                 continue;
                             }
 
-                            if (idx > 0)
+                            // Espace insécable avant le signe.
+                            if (checkSpaceBefore && idx > 0)
                             {
                                 char prev = text[idx - 1];
                                 if (prev == ' ' || prev == '\t')
@@ -495,6 +497,51 @@ public static class DocxValidator
                                             Fix = new TextEdit(idx, 0, "\u00A0")
                                         });
                                     }
+                                }
+                            }
+
+                            // Espace ordinaire après le signe.
+                            if (checkSpaceAfter && idx + 1 < text.Length)
+                            {
+                                char next = text[idx + 1];
+                                bool valid = next == ' ';
+
+                                if (!valid && (c == '!' || c == '?'))
+                                {
+                                    // « ?! » et « !! » sont admis, de même que les ponctuations
+                                    // fermantes, avec ou sans l'insécable qu'elles réclament
+                                    // (« Quoi ? » ou « (vraiment ?) »).
+                                    valid = next == '!' || next == '?'
+                                        || IsClosingPunctuation(next)
+                                        || ((next == '\u00A0' || next == '\u202F')
+                                            && idx + 2 < text.Length && IsClosingPunctuation(text[idx + 2]));
+                                }
+
+                                if (!valid)
+                                {
+                                    bool wrongSpace = next == '\u00A0' || next == '\u202F' || next == '\t';
+
+                                    // On ne corrige que l'évident : une espace à remplacer, ou du
+                                    // texte collé au signe. Devant une autre ponctuation, le bon
+                                    // remplacement demande un jugement humain.
+                                    TextEdit? fix = null;
+                                    if (wrongSpace) fix = new TextEdit(idx + 1, 1, " ");
+                                    else if (char.IsLetterOrDigit(next)) fix = new TextEdit(idx + 1, 0, " ");
+
+                                    var context = GetContext(text, idx, 2);
+                                    report.Errors.Add(new ValidationError
+                                    {
+                                        RuleName = "EspaceApresPonctuation",
+                                        Message = wrongSpace
+                                            ? $"Espace ordinaire attendue après le signe '{c}' (espace insécable ou tabulation détectée)."
+                                            : $"Espace manquante après le signe '{c}'.",
+                                        Context = context,
+                                        PartName = entryName,
+                                        ParagraphIndex = paragraphIndex,
+                                        Start = idx,
+                                        Length = 2,
+                                        Fix = fix
+                                    });
                                 }
                             }
                         }
@@ -629,6 +676,24 @@ public static class DocxValidator
 
         return report;
     }
+
+    /// <summary>
+    /// Vrai quand un « : » ou un « ; » sépare deux éléments au lieu de ponctuer une phrase :
+    /// heure (12:30), URL (https://…), chemin Windows, émoticône (:-)).
+    /// </summary>
+    private static bool IsSeparator(string text, int idx)
+    {
+        char c = text[idx];
+        if (c != ':' && c != ';') return false;
+        if (idx + 1 >= text.Length) return false;
+
+        char next = text[idx + 1];
+        return char.IsDigit(next) || next == '/' || next == '\\' || next == '-'
+            || next == '(' || next == ')' || next == ':';
+    }
+
+    private static bool IsClosingPunctuation(char c) =>
+        c == '»' || c == '”' || c == ')' || c == ']' || c == '}' || c == '…';
 
     private static bool IsSpace(char c) =>
         c == ' ' || c == '\u00A0' || c == '\u202F' || c == '\t';

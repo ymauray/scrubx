@@ -282,4 +282,19 @@ public class DocxRevisionWriterTests
         using var rejected = Resolve(revised, accept: false);
         Assert.Equal(ParagraphTexts(source), ParagraphTexts(rejected));
     }
+
+    [Fact]
+    public void Write_CorrectsBothSidesOfADoublePunctuationMark()
+    {
+        using var source = CreateDocx("<w:p>" + Run("Bonjour!Comment vas-tu?") + "</w:p>");
+
+        using var revised = WriteRevisions(source, out _);
+
+        using var accepted = Resolve(revised, accept: true);
+        Assert.Equal("Bonjour\u00A0! Comment vas-tu\u00A0?", ParagraphTexts(accepted)[1]);
+        Assert.DoesNotContain(DocxValidator.Validate(accepted, null).Errors, e => !e.IsWarning);
+
+        using var rejected = Resolve(revised, accept: false);
+        Assert.Equal(ParagraphTexts(source), ParagraphTexts(rejected));
+    }
 }

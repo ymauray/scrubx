@@ -15,6 +15,7 @@ public static class RuleCatalog
         new RuleDefinition("TiretDebutInvalide", "TIRET", "Tirets/puces de début de ligne invalides (veuillez utiliser des tirets cadratins —)", false, ThemeTypographie),
         new RuleDefinition("EspaceInsecableManquante", "EIMANQ", "Espaces insécables manquantes après un tiret cadratin", false, ThemeTypographie),
         new RuleDefinition("EspaceInsecablePonctuation", "EIPONC", "Espaces insécables manquantes avant une ponctuation double (! ? : ;)", false, ThemeTypographie),
+        new RuleDefinition("EspaceApresPonctuation", "ESPAPRES", "Espaces manquantes après une ponctuation double (! ? : ;)", false, ThemeTypographie),
         new RuleDefinition("EspaceFinParagraphe", "EFINPAR", "Espace en fin de paragraphe détectée (veuillez la supprimer)", false, ThemeTypographie),
         new RuleDefinition("DoubleEspace", "DESPACE", "Espaces consécutives détectées (les doubles espaces ne sont pas autorisées)", false, ThemeTypographie),
         new RuleDefinition("VirguleAvantEt", "VIRGET", "Virgule détectée juste avant le mot 'et' (avertissement d'énumération)", true, ThemeTypographie),

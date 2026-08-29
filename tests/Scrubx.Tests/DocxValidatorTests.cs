@@ -459,6 +459,120 @@ public class DocxValidatorTests
     }
 
     [Fact]
+    public void Validate_SpaceAfterDoublePunctuation_ReturnsValid()
+    {
+        // Arrange
+        using var docxStream = CreateMockDocx("Bonjour\u00A0! Quoi\u00A0? Ceci\u00A0: cela\u00A0; voilà.");
+
+        // Act
+        var report = DocxValidator.Validate(docxStream);
+
+        // Assert
+        Assert.True(report.IsValid);
+        Assert.Empty(report.Errors);
+    }
+
+    [Fact]
+    public void Validate_NoSpaceAfterDoublePunctuation_ReturnsInvalid()
+    {
+        // Arrange
+        using var docxStream = CreateMockDocx("Bonjour\u00A0!Comment ça va\u00A0?Bien.");
+
+        // Act
+        var report = DocxValidator.Validate(docxStream);
+
+        // Assert
+        Assert.False(report.IsValid);
+        Assert.Equal(2, report.Errors.Count);
+        Assert.All(report.Errors, e => Assert.Equal("EspaceApresPonctuation", e.RuleName));
+        Assert.All(report.Errors, e => Assert.Contains("Espace manquante après", e.Message));
+    }
+
+    [Fact]
+    public void Validate_NonBreakingSpaceAfterDoublePunctuation_ReturnsInvalid()
+    {
+        // Arrange
+        using var docxStream = CreateMockDocx("Ceci\u00A0:\u00A0cela.");
+
+        // Act
+        var report = DocxValidator.Validate(docxStream);
+
+        // Assert
+        Assert.False(report.IsValid);
+        var error = Assert.Single(report.Errors);
+        Assert.Equal("EspaceApresPonctuation", error.RuleName);
+        Assert.Contains("Espace ordinaire attendue", error.Message);
+    }
+
+    [Theory]
+    // Fin de paragraphe : rien n'est attendu derrière le signe, y compris pour « : »,
+    // qu'un paragraphe introduisant un dialogue termine légitimement.
+    [InlineData("Vraiment\u00A0?")]
+    [InlineData("Quelle chance\u00A0!")]
+    [InlineData("Elle annonça\u00A0:")]
+    public void Validate_DoublePunctuationAtEndOfParagraph_ReturnsValid(string text)
+    {
+        // Arrange
+        using var docxStream = CreateMockDocx(text);
+
+        // Act
+        var report = DocxValidator.Validate(docxStream);
+
+        // Assert
+        Assert.True(report.IsValid);
+        Assert.Empty(report.Errors);
+    }
+
+    [Theory]
+    // Ce qui peut légitimement suivre un « ! » ou un « ? » sans espace.
+    [InlineData("Ah\u00A0!! Quoi\u00A0?! Vraiment\u00A0?!!")]
+    [InlineData("«\u00A0Quoi\u00A0?\u00A0» dit-il.")]
+    [InlineData("Il a dit oui (vraiment\u00A0?) hier soir.")]
+    public void Validate_DoublePunctuationFollowedByPunctuation_ReturnsValid(string text)
+    {
+        // Arrange
+        using var docxStream = CreateMockDocx(text);
+
+        // Act
+        var report = DocxValidator.Validate(docxStream);
+
+        // Assert
+        Assert.True(report.IsValid);
+        Assert.Empty(report.Errors);
+    }
+
+    [Fact]
+    public void Validate_ColonGluedBetweenTwoWords_ReturnsInvalid()
+    {
+        // Arrange : ni heure, ni URL, ni émoticône — les deux règles d'espacement s'appliquent.
+        using var docxStream = CreateMockDocx("Il dit:bonjour à tous.");
+
+        // Act
+        var report = DocxValidator.Validate(docxStream);
+
+        // Assert
+        Assert.False(report.IsValid);
+        Assert.Equal(2, report.Errors.Count);
+        Assert.Contains(report.Errors, e => e.RuleName == "EspaceInsecablePonctuation");
+        Assert.Contains(report.Errors, e => e.RuleName == "EspaceApresPonctuation");
+    }
+
+    [Fact]
+    public void Validate_WithEspaceApresPonctuationDisabled_IgnoresTheRule()
+    {
+        // Arrange
+        using var docxStream = CreateMockDocx("Bonjour\u00A0!Comment vas-tu\u00A0?");
+        var enabled = RuleCatalog.AllRuleNames.Where(r => r != "EspaceApresPonctuation").ToHashSet();
+
+        // Act
+        var report = DocxValidator.Validate(docxStream, enabled);
+
+        // Assert
+        Assert.True(report.IsValid);
+        Assert.Empty(report.Errors);
+    }
+
+    [Fact]
     public void Validate_FrenchQuotes_ReturnsValid()
     {
         // Arrange

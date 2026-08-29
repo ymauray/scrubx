@@ -76,6 +76,7 @@ pour les désactiver individuellement (`-i/--ignore`, voir §4).
 | `EspaceInsecableManquante` | `EIMANQ` | erreur | `—` en début de ligne non suivi d'une espace insécable (` ` ou ` `) |
 | `EspaceInsecablePonctuation` | `EIPONC` | erreur | Espace insécable manquante avant une ponctuation double (`!`, `?`, `:`, `;`) |
 | `EspaceGuillemet` | `EGUIL` | erreur | Espace insécable manquante autour de `«`/`»` |
+| `EspaceApresPonctuation` | `ESPAPRES` | erreur | Espace ordinaire manquante après une ponctuation double (`!`, `?`, `:`, `;`) |
 | `EspaceFinParagraphe` | `EFINPAR` | erreur | Paragraphe se terminant par un espace/tabulation |
 | `DoubleEspace` | `DESPACE` | erreur | 2+ espaces consécutives (standard, insécable, ou fine, mélangeables) |
 | `StyleParagrapheInvalide` | `STYLEINV` | erreur | Style de paragraphe hors de `Normal`/`Titre1`/`Ellipse` (uniquement dans `word/document.xml`) |
@@ -91,10 +92,25 @@ Notes d'implémentation notables :
 - `EspaceInsecablePonctuation` ne se déclenche que si le caractère précédent
   est alphanumérique ou une ponctuation fermante (`)`, `]`, `}`, `»`, `”`, `’`, `'`) —
   pas en tout début de paragraphe.
-- `:` et `;` ne sont contrôlés que s'ils sont **suivis d'une espace ou en fin de
-  paragraphe** : sans cela, ils ne jouent pas un rôle de ponctuation et les
-  signaler produirait des faux positifs sur `12:30`, `https://…` ou `:-)`.
-  `!` et `?` n'ont pas cette restriction (comportement d'origine).
+- `EspaceInsecablePonctuation` (espace **avant**) et `EspaceApresPonctuation`
+  (espace **après**) partagent le même parcours et le même garde-fou : un `:`
+  ou un `;` suivi d'un chiffre, de `/`, `\`, `-`, `(`, `)` ou d'un autre `:`
+  n'est pas une ponctuation mais un séparateur (`12:30`, `https://…`, `C:\…`,
+  `:-)`), et n'est contrôlé par aucune des deux règles. Partout ailleurs — y
+  compris collé entre deux mots (`dit:bonjour`) — il l'est par les deux.
+- `EspaceApresPonctuation` attend une **espace ordinaire** (jamais insécable :
+  celle-ci va devant le signe, pas derrière) et tolère la **fin de
+  paragraphe** pour les quatre signes, `:` compris — un paragraphe
+  introduisant un dialogue s'y termine légitimement, et `EspaceFinParagraphe`
+  interdirait de toute façon d'y ajouter une espace.
+- Après `!` et `?` sont également admis, sans espace : un autre `!`/`?`
+  (`?!`, `!!`), une ponctuation fermante (`»`, `”`, `)`, `]`, `}`, `…`), et
+  une insécable suivie d'une de ces fermantes (`«\u00A0Quoi\u00A0?\u00A0»`,
+  où l'insécable est exigée par `EspaceGuillemet`).
+- `EspaceApresPonctuation` ne propose de correction automatique que dans les
+  cas évidents : espace insécable ou tabulation à remplacer, ou lettre/chiffre
+  collé au signe. Devant une autre ponctuation, la correction demande un
+  jugement humain.
 - `TiretDebutInvalide` gère deux cas : texte brut commençant par `-`/`–`,
   et puce de liste (`w:numPr`) dont le `lvlText` résolu via `numbering.xml`
   commence par `-`/`–`.

@@ -42,6 +42,11 @@ faire à cet unique endroit.
   indépendants plutôt qu'un gros commit final.
 - Workflow : nouvelle branche `feature/...` par sujet, PR via `gh pr create`,
   jamais de commit direct sur `main`.
+- Le travail à faire (bugs, vérifications en attente, idées) se suit dans
+  les **issues GitHub**, pas dans les fichiers du dépôt : `README.md` et
+  `SPECIFICATION.md` décrivent ce qui *est*, les issues ce qui *reste à
+  faire*. Ouvrir une issue plutôt que d'ajouter une ligne « à faire » dans
+  la documentation.
 - Avant de pousser une modification d'UI, la tester dans un navigateur
   (via les outils Claude in Chrome) — ne pas se fier uniquement à la
   compilation.
@@ -60,7 +65,9 @@ faire à cet unique endroit.
   l'exposent aussi, via `POST /api/revisions` et le bouton
   « Télécharger la copie annotée » du rapport.
 - `Scrubx.Desktop` : fonctionnel, publié en exécutable autonome Windows
-  (`win-x64`, self-contained, single-file).
+  (`win-x64`, self-contained, single-file). Une vérification reste due sur
+  une machine Windows : le téléchargement de la copie annotée depuis
+  l'interface ([issue #28](https://github.com/ymauray/scrubx/issues/28)).
 - Portage macOS (`Scrubx.Mac`) : **non démarré**, à faire sur une machine
   macOS réelle (Xcode + workload MAUI requis, cf. `SPECIFICATION.md` §8).
 - CI/CD : en place (`.github/workflows/tests.yml` sur chaque PR, requis

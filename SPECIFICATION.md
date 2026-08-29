@@ -311,9 +311,12 @@ défaut par le template — à vérifier/nettoyer si vide ou obsolète.
    le texte concaténé de chaque `w:p`, donc les problèmes à cheval sur deux
    paragraphes (ex. un tiret de fin de paragraphe suivi d'un autre) ne sont
    pas couverts.
-3. **Pas de correction automatique** : l'outil ne fait que détecter et
-   rapporter, il ne modifie jamais le `.docx`. Une fonctionnalité de
-   correction automatique (`--fix`) serait une extension naturelle.
+3. **Correction automatique partielle** : `--revisions` (§3.5) écrit une
+   copie annotée, mais plusieurs règles ne proposent aucune correction
+   (styles, sauts de page, puce de liste, virgule avant « et »), et
+   certaines ne la proposent que dans les cas évidents. Le document
+   d'origine n'est jamais modifié : il n'existe pas de mode « corriger sur
+   place ».
 4. **Regex `VirguleAvantEt`** : ne gère que l'énumération simple avant "et"
    sur un mot ; ne détecte pas "ou" ni d'autres conjonctions similaires,
    à étendre si le besoin métier grandit.
@@ -334,6 +337,10 @@ défaut par le template — à vérifier/nettoyer si vide ou obsolète.
 8. **Localisation** : tous les messages sont en français, en dur dans le
    code (`Program.cs` et `DocxValidator.cs`). Pas d'abstraction i18n pour
    l'instant.
+
+Cette liste recense des **caractéristiques durables** de la conception, pas
+des tâches : le travail à faire est suivi dans les
+[issues GitHub](https://github.com/ymauray/scrubx/issues).
 
 ## 7. Application desktop native (`Scrubx.Desktop`, Windows)
 

@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
@@ -21,11 +20,12 @@ public sealed class RevisionOptions
     public DateTimeOffset Date { get; set; } = DateTimeOffset.Now;
 }
 
-public sealed record RevisionResult(int RevisionCount, int SkippedCount);
+public sealed record RevisionResult(int RevisionCount, int CommentCount, int SkippedCount);
 
 /// <summary>
 /// Produit une copie d'un .docx dans laquelle les corrections proposées par
-/// <see cref="DocxValidator"/> sont inscrites en révisions suivies (w:ins / w:del).
+/// <see cref="DocxValidator"/> sont inscrites en révisions suivies (w:ins / w:del),
+/// chacune accompagnée d'un commentaire Word rappelant la règle concernée.
 /// </summary>
 public static class DocxRevisionWriter
 {
@@ -44,20 +44,17 @@ public static class DocxRevisionWriter
         options ??= new RevisionOptions();
 
         using var archive = new ZipArchive(source, ZipArchiveMode.Read, leaveOpen: true);
-        var entry = archive.GetEntry(DocumentPart)
-            ?? throw new DocxRevisionException($"Partie '{DocumentPart}' introuvable : ce fichier n'est pas un document Word valide.");
-
-        XDocument document;
-        using (var entryStream = entry.Open())
-        {
-            document = XDocument.Load(entryStream, LoadOptions.PreserveWhitespace);
-        }
+        var package = new DocxPackage(archive);
+        var document = package.Load(DocumentPart);
 
         GuardAgainstExistingRevisions(document);
+        package.Touch(DocumentPart);
 
-        var result = ApplyFixes(document, report, options);
+        var comments = new DocxComments(package, document, options.Author, options.Date);
+        var result = ApplyFixes(document, comments, report, options);
+        comments.Finish();
 
-        CopyArchive(archive, destination, new Dictionary<string, XDocument> { [DocumentPart] = document });
+        package.Save(destination);
 
         return result;
     }
@@ -72,7 +69,7 @@ public static class DocxRevisionWriter
         }
     }
 
-    private static RevisionResult ApplyFixes(XDocument document, ValidationReport report, RevisionOptions options)
+    private static RevisionResult ApplyFixes(XDocument document, DocxComments comments, ValidationReport report, RevisionOptions options)
     {
         var paragraphs = document.Descendants(W + "p").ToList();
         var date = options.Date.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss'Z'");
@@ -111,9 +108,14 @@ public static class DocxRevisionWriter
 
                 try
                 {
-                    ApplyFix(paragraph, fix, options.Author, date, ref revisionId);
+                    var (first, last) = ApplyFix(paragraph, fix, options.Author, date, ref revisionId);
                     limit = fix.Start;
                     applied++;
+
+                    // Un commentaire par erreur, couvrant la suppression et l'insertion.
+                    var commentId = comments.Add(CommentText(error));
+                    first.AddBeforeSelf(DocxComments.RangeStart(commentId));
+                    last.AddAfterSelf(DocxComments.RangeEnd(commentId));
                 }
                 catch (ParagraphStructureException)
                 {
@@ -122,10 +124,21 @@ public static class DocxRevisionWriter
             }
         }
 
-        return new RevisionResult(applied, skipped);
+        return new RevisionResult(applied, applied, skipped);
     }
 
-    private static void ApplyFix(XElement paragraph, TextEdit fix, string author, string date, ref int revisionId)
+    private static string CommentText(ValidationError error)
+    {
+        var title = RuleCatalog.GetTitle(error.RuleName);
+        var code = RuleCatalog.GetCode(error.RuleName);
+        return code == null ? title : $"{code} : {title}";
+    }
+
+    /// <summary>
+    /// Écrit une correction et renvoie le premier et le dernier élément produits,
+    /// bornes de la plage à commenter.
+    /// </summary>
+    private static (XElement First, XElement Last) ApplyFix(XElement paragraph, TextEdit fix, string author, string date, ref int revisionId)
     {
         var map = new ParagraphTextMap(paragraph);
         if (fix.Start < 0 || fix.Start + fix.Length > map.Text.Length)
@@ -149,7 +162,7 @@ public static class DocxRevisionWriter
             }
         }
 
-        if (fix.Replacement.Length == 0) return;
+        if (fix.Replacement.Length == 0) return (deletion!, deletion!);
 
         var model = deletion?.Descendants(W + "r").FirstOrDefault();
         var insertedRun = new XElement(W + "r");
@@ -162,7 +175,7 @@ public static class DocxRevisionWriter
         if (deletion != null)
         {
             deletion.AddAfterSelf(insertion);
-            return;
+            return (deletion, insertion);
         }
 
         // Insertion pure : il faut d'abord ouvrir une frontière de run à l'offset visé.
@@ -175,6 +188,8 @@ public static class DocxRevisionWriter
         {
             paragraph.Add(insertion);
         }
+
+        return (insertion, insertion);
     }
 
     private static object[] RevisionAttributes(string author, string date, ref int revisionId) =>
@@ -190,46 +205,5 @@ public static class DocxRevisionWriter
         {
             text.ReplaceWith(new XElement(W + "delText", text.Attributes(), text.Value));
         }
-    }
-
-    /// <summary>
-    /// Recopie l'archive source en remplaçant les parties données, à l'octet près pour les autres.
-    /// </summary>
-    internal static void CopyArchive(
-        ZipArchive source,
-        Stream destination,
-        IReadOnlyDictionary<string, XDocument> replacements,
-        IReadOnlyList<(string Name, XDocument Document)>? additions = null)
-    {
-        using var output = new ZipArchive(destination, ZipArchiveMode.Create, leaveOpen: true);
-
-        foreach (var entry in source.Entries)
-        {
-            var created = output.CreateEntry(entry.FullName, CompressionLevel.Optimal);
-            using var target = created.Open();
-
-            if (replacements.TryGetValue(entry.FullName, out var replacement))
-            {
-                Save(replacement, target);
-            }
-            else
-            {
-                using var original = entry.Open();
-                original.CopyTo(target);
-            }
-        }
-
-        foreach (var (name, document) in additions ?? [])
-        {
-            var created = output.CreateEntry(name, CompressionLevel.Optimal);
-            using var target = created.Open();
-            Save(document, target);
-        }
-    }
-
-    private static void Save(XDocument document, Stream target)
-    {
-        // DisableFormatting : la moindre indentation ajoutée modifierait le texte du document.
-        document.Save(target, SaveOptions.DisableFormatting);
     }
 }

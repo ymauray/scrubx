@@ -124,7 +124,7 @@ public class DocxValidatorTests
             {
                 writer.Write("""
                     <w:footnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
-                      <w:footnote><w:p><w:t>Note : c'est ici.</w:t></w:p></w:footnote>
+                      <w:footnote><w:p><w:t>Note&#160;: c'est ici.</w:t></w:p></w:footnote>
                     </w:footnotes>
                     """);
             }
@@ -367,6 +367,98 @@ public class DocxValidatorTests
     }
 
     [Fact]
+    public void Validate_ColonAndSemicolonWithNbs_ReturnsValid()
+    {
+        // Arrange
+        using var docxStream = CreateMockDocx("Ceci\u00A0: cela\u00A0; voilà.");
+
+        // Act
+        var report = DocxValidator.Validate(docxStream);
+
+        // Assert
+        Assert.True(report.IsValid);
+        Assert.Empty(report.Errors);
+    }
+
+    [Fact]
+    public void Validate_ColonAndSemicolonWithNnbs_ReturnsValid()
+    {
+        // Arrange
+        using var docxStream = CreateMockDocx("Ceci\u202F: cela\u202F; voilà.");
+
+        // Act
+        var report = DocxValidator.Validate(docxStream);
+
+        // Assert
+        Assert.True(report.IsValid);
+        Assert.Empty(report.Errors);
+    }
+
+    [Fact]
+    public void Validate_ColonAndSemicolonWithNormalSpace_ReturnsInvalid()
+    {
+        // Arrange
+        using var docxStream = CreateMockDocx("Ceci : cela ; voilà.");
+
+        // Act
+        var report = DocxValidator.Validate(docxStream);
+
+        // Assert
+        Assert.False(report.IsValid);
+        Assert.Equal(2, report.Errors.Count);
+        Assert.All(report.Errors, e => Assert.Contains("espace ordinaire détectée", e.Message));
+        Assert.All(report.Errors, e => Assert.Equal("EspaceInsecablePonctuation", e.RuleName));
+    }
+
+    [Fact]
+    public void Validate_ColonAndSemicolonWithNoSpace_ReturnsInvalid()
+    {
+        // Arrange
+        using var docxStream = CreateMockDocx("Ceci: cela; voilà.");
+
+        // Act
+        var report = DocxValidator.Validate(docxStream);
+
+        // Assert
+        Assert.False(report.IsValid);
+        Assert.Equal(2, report.Errors.Count);
+        Assert.All(report.Errors, e => Assert.Contains("Espace insécable manquante", e.Message));
+    }
+
+    [Fact]
+    public void Validate_ColonAtEndOfParagraph_ReturnsInvalid()
+    {
+        // Arrange
+        using var docxStream = CreateMockDocx("Elle annonça:");
+
+        // Act
+        var report = DocxValidator.Validate(docxStream);
+
+        // Assert
+        Assert.False(report.IsValid);
+        var error = Assert.Single(report.Errors);
+        Assert.Equal("EspaceInsecablePonctuation", error.RuleName);
+    }
+
+    [Theory]
+    // Un « : » non suivi d'une espace n'est pas une ponctuation : heure, URL, émoticône.
+    [InlineData("Rendez-vous à 12:30 dans le hall.")]
+    [InlineData("Voir https://exemple.org/page pour la suite.")]
+    [InlineData("Il a répondu :-) et rien de plus.")]
+    public void Validate_ColonUsedAsASeparator_ReturnsValid(string text)
+    {
+        // Arrange
+        using var docxStream = CreateMockDocx(text);
+
+        // Act
+        var report = DocxValidator.Validate(docxStream);
+
+        // Assert
+        Assert.True(report.IsValid);
+        Assert.Empty(report.Errors);
+    }
+
+    [Fact]
     public void Validate_FrenchQuotes_ReturnsValid()
     {
         // Arrange
@@ -384,7 +476,7 @@ public class DocxValidatorTests
     public void Validate_StraightDoubleQuotes_ReturnsInvalid()
     {
         // Arrange
-        using var docxStream = CreateMockDocx("Il a dit: \"Bonjour\".");
+        using var docxStream = CreateMockDocx("Il a dit\u00A0: \"Bonjour\".");
 
         // Act
         var report = DocxValidator.Validate(docxStream);
@@ -535,7 +627,7 @@ public class DocxValidatorTests
                       <w:footnote>
                         <w:p>
                           <w:pPr><w:pStyle w:val="Chapeau"/></w:pPr>
-                          <w:t>Note : c’est valide car c'est une note.</w:t>
+                          <w:t>Note&#160;: c’est valide car c'est une note.</w:t>
                         </w:p>
                       </w:footnote>
                     </w:footnotes>

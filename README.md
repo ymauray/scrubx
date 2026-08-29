@@ -82,6 +82,11 @@ Le frontend (`src/Scrubx.Web/wwwroot/`) est statique (HTML/CSS/JS vanilla,
 sans étape de build) et servi directement par ASP.NET Core. Il est
 partagé tel quel avec `Scrubx.Desktop`.
 
+Quand le rapport contient au moins une correction automatisable, il propose
+**« Télécharger la copie annotée »** : l'équivalent de `--revisions` en
+ligne de commande, avec un champ facultatif pour le nom du relecteur. Le
+document d'origine n'est pas modifié — c'est une copie qui est produite.
+
 ### Application desktop (Windows)
 
 ```bash

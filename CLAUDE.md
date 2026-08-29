@@ -56,8 +56,9 @@ faire à cet unique endroit.
   (`-i/--ignore`, `-f/--force`, `-c/--create-config` → `scrubx.json`,
   `-r/--show-rules`) — cf. `SPECIFICATION.md` §4. Elle sait aussi écrire une
   copie du document avec les corrections en révisions suivies et commentées
-  (`--revisions`, cf. `SPECIFICATION.md` §3.5) ; le Web et le Desktop ne
-  l'exposent pas encore.
+  (`--revisions`, cf. `SPECIFICATION.md` §3.5). Le Web et le Desktop
+  l'exposent aussi, via `POST /api/revisions` et le bouton
+  « Télécharger la copie annotée » du rapport.
 - `Scrubx.Desktop` : fonctionnel, publié en exécutable autonome Windows
   (`win-x64`, self-contained, single-file).
 - Portage macOS (`Scrubx.Mac`) : **non démarré**, à faire sur une machine

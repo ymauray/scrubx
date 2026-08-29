@@ -3,8 +3,16 @@ const formEl = document.getElementById("upload-form");
 const fileInputEl = document.getElementById("file-input");
 const submitBtnEl = document.getElementById("submit-btn");
 const reportEl = document.getElementById("report");
+const revisionBlockEl = document.getElementById("revision-block");
+const revisionHintEl = document.getElementById("revision-hint");
+const revisionBtnEl = document.getElementById("revision-btn");
+const authorInputEl = document.getElementById("author-input");
 
 let rules = [];
+
+// Document et règles de la dernière analyse : la copie annotée doit correspondre au
+// rapport affiché, même si la sélection a changé entre-temps.
+let analysed = null;
 
 const DISABLED_RULES_STORAGE_KEY = "scrubx.disabledRules";
 
@@ -101,7 +109,72 @@ function renderReport(data) {
 
   renderGroup(errors, "error");
   renderGroup(warnings, "warning");
+
+  renderRevisionBlock(data.fixableCount);
 }
+
+function renderRevisionBlock(fixableCount) {
+  if (!fixableCount) {
+    revisionBlockEl.hidden = true;
+    return;
+  }
+
+  revisionHintEl.textContent = fixableCount > 1
+    ? `${fixableCount} corrections peuvent être inscrites dans une copie du document, en révisions suivies et commentées : il ne reste qu'à les accepter ou les refuser dans Word. L'original n'est pas modifié.`
+    : "1 correction peut être inscrite dans une copie du document, en révision suivie et commentée : il ne reste qu'à l'accepter ou la refuser dans Word. L'original n'est pas modifié.";
+  revisionBlockEl.hidden = false;
+}
+
+function showRevisionError(message) {
+  const existing = revisionBlockEl.querySelector(".revision-error");
+  if (existing) existing.remove();
+
+  const el = document.createElement("div");
+  el.className = "revision-error";
+  el.textContent = message;
+  revisionBlockEl.appendChild(el);
+}
+
+revisionBtnEl.addEventListener("click", async () => {
+  if (!analysed) return;
+
+  const existing = revisionBlockEl.querySelector(".revision-error");
+  if (existing) existing.remove();
+
+  revisionBtnEl.disabled = true;
+  const label = revisionBtnEl.textContent;
+  revisionBtnEl.textContent = "Préparation de la copie...";
+
+  try {
+    const formData = new FormData();
+    formData.append("file", analysed.file);
+    formData.append("disabledRules", analysed.disabledRules);
+    formData.append("author", authorInputEl.value);
+
+    const res = await fetch("api/revisions", { method: "POST", body: formData });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      showRevisionError(`Erreur : ${data.error ?? "la copie annotée n'a pas pu être produite."}`);
+      return;
+    }
+
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = analysed.file.name.replace(/\.docx$/i, "") + "-relu.docx";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    showRevisionError(`Erreur inattendue : ${err.message}`);
+  } finally {
+    revisionBtnEl.disabled = false;
+    revisionBtnEl.textContent = label;
+  }
+});
 
 function renderGroup(issues, kind) {
   if (issues.length === 0) return;
@@ -146,11 +219,14 @@ formEl.addEventListener("submit", async (event) => {
 
   submitBtnEl.disabled = true;
   reportEl.textContent = "Analyse en cours...";
+  revisionBlockEl.hidden = true;
+  analysed = null;
 
   try {
+    const disabledRules = getDisabledRuleNames().join(",");
     const formData = new FormData();
     formData.append("file", file);
-    formData.append("disabledRules", getDisabledRuleNames().join(","));
+    formData.append("disabledRules", disabledRules);
 
     const res = await fetch("api/validate", { method: "POST", body: formData });
     const data = await res.json();
@@ -160,6 +236,7 @@ formEl.addEventListener("submit", async (event) => {
       return;
     }
 
+    analysed = { file, disabledRules };
     renderReport(data);
   } catch (err) {
     reportEl.textContent = `Erreur inattendue : ${err.message}`;

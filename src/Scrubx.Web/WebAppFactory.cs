@@ -36,44 +36,17 @@ public static class WebAppFactory
 
         app.MapPost("/api/validate", async (HttpRequest request) =>
         {
-            if (!request.HasFormContentType)
-            {
-                return Results.BadRequest(new { error = "Requête multipart/form-data attendue." });
-            }
+            var (error, upload) = await ReadUploadAsync(request);
+            if (error != null) return error;
 
-            var form = await request.ReadFormAsync();
-            var file = form.Files.GetFile("file");
-
-            if (file == null || file.Length == 0)
-            {
-                return Results.BadRequest(new { error = "Aucun fichier fourni (champ 'file' attendu)." });
-            }
-
-            if (!Path.GetExtension(file.FileName).Equals(".docx", StringComparison.OrdinalIgnoreCase))
-            {
-                return Results.BadRequest(new { error = "Le fichier doit avoir l'extension .docx." });
-            }
-
-            if (file.Length > MaxUploadBytes)
-            {
-                return Results.BadRequest(new { error = $"Fichier trop volumineux (max {MaxUploadBytes / (1024 * 1024)} Mo)." });
-            }
-
-            // Règles désactivées transmises en tant que valeurs répétées du champ 'disabledRules'.
-            var disabledRules = form["disabledRules"]
-                .SelectMany(v => v?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) ?? [])
-                .ToHashSet();
-
-            var enabledRules = RuleCatalog.AllRuleNames
-                .Where(r => !disabledRules.Contains(r))
-                .ToHashSet();
-
-            await using var stream = file.OpenReadStream();
-            var report = DocxValidator.Validate(stream, enabledRules);
+            using var content = upload!.Content;
+            var report = DocxValidator.Validate(content, upload.EnabledRules);
 
             var response = new
             {
                 isValid = report.IsValid,
+                // Nombre de corrections que /api/revisions saurait écrire pour ce document.
+                fixableCount = report.Errors.Count(e => e.Fix != null),
                 errors = report.Errors.Select(e => new
                 {
                     ruleName = e.RuleName,
@@ -87,6 +60,103 @@ public static class WebAppFactory
             return Results.Ok(response);
         });
 
+        // Renvoie une copie du document où les corrections sont inscrites en révisions
+        // suivies et commentées — équivalent de l'option --revisions de la CLI.
+        app.MapPost("/api/revisions", async (HttpRequest request) =>
+        {
+            var (error, upload) = await ReadUploadAsync(request);
+            if (error != null) return error;
+
+            using var content = upload!.Content;
+            var report = DocxValidator.Validate(content, upload.EnabledRules);
+            content.Position = 0;
+
+            if (!report.Errors.Any(e => e.Fix != null))
+            {
+                return Results.BadRequest(new { error = "Aucune correction automatique à proposer pour ce document." });
+            }
+
+            var options = new RevisionOptions();
+            if (upload.Author.Length > 0) options.Author = upload.Author;
+
+            var output = new MemoryStream();
+            try
+            {
+                DocxRevisionWriter.Write(content, output, report, options);
+            }
+            catch (DocxRevisionException ex)
+            {
+                return Results.Json(new { error = ex.Message }, statusCode: StatusCodes.Status409Conflict);
+            }
+
+            var downloadName = Path.GetFileNameWithoutExtension(upload.FileName) + "-relu.docx";
+            return Results.File(
+                output.ToArray(),
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                downloadName);
+        });
+
         return app;
+    }
+
+    private sealed record Upload(MemoryStream Content, string FileName, HashSet<string> EnabledRules, string Author);
+
+    /// <summary>
+    /// Lit et valide le formulaire commun aux deux points d'entrée : le document, les règles
+    /// désactivées, et le nom du relecteur.
+    /// </summary>
+    private static async Task<(IResult? Error, Upload? Upload)> ReadUploadAsync(HttpRequest request)
+    {
+        if (!request.HasFormContentType)
+        {
+            return (Results.BadRequest(new { error = "Requête multipart/form-data attendue." }), null);
+        }
+
+        var form = await request.ReadFormAsync();
+        var file = form.Files.GetFile("file");
+
+        if (file == null || file.Length == 0)
+        {
+            return (Results.BadRequest(new { error = "Aucun fichier fourni (champ 'file' attendu)." }), null);
+        }
+
+        if (!Path.GetExtension(file.FileName).Equals(".docx", StringComparison.OrdinalIgnoreCase))
+        {
+            return (Results.BadRequest(new { error = "Le fichier doit avoir l'extension .docx." }), null);
+        }
+
+        if (file.Length > MaxUploadBytes)
+        {
+            return (Results.BadRequest(new { error = $"Fichier trop volumineux (max {MaxUploadBytes / (1024 * 1024)} Mo)." }), null);
+        }
+
+        // Règles désactivées transmises en tant que valeurs répétées du champ 'disabledRules'.
+        var disabledRules = form["disabledRules"]
+            .SelectMany(v => v?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) ?? [])
+            .ToHashSet();
+
+        var enabledRules = RuleCatalog.AllRuleNames
+            .Where(r => !disabledRules.Contains(r))
+            .ToHashSet();
+
+        // Le contenu est mis en mémoire : /api/revisions le relit après la validation.
+        var content = new MemoryStream();
+        await using (var stream = file.OpenReadStream())
+        {
+            await stream.CopyToAsync(content);
+        }
+        content.Position = 0;
+
+        return (null, new Upload(content, file.FileName, enabledRules, SanitizeAuthor(form["author"].ToString())));
+    }
+
+    /// <summary>
+    /// Le nom du relecteur atterrit dans des attributs XML : on écarte les caractères de
+    /// contrôle et on borne la longueur.
+    /// </summary>
+    private static string SanitizeAuthor(string author)
+    {
+        var cleaned = new string(author.Where(c => !char.IsControl(c)).ToArray()).Trim();
+        return cleaned.Length > 100 ? cleaned[..100] : cleaned;
     }
 }

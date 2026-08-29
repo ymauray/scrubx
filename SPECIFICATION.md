@@ -284,6 +284,21 @@ La copie annotée (§3.5) est couverte par
 (l'aller-retour accepter/refuser) et `DocxCommentsTests` (parties,
 relations, styles, ancrage des commentaires).
 
+`WebApiTests` couvre les points d'entrée HTTP de `Scrubx.Web` : la fixture
+`ScrubxWebFixture` démarre l'application sur un serveur en mémoire
+(`Microsoft.AspNetCore.TestHost`, `builder.WebHost.UseTestServer()` passé au
+`configure` de `WebAppFactory.Create`), sans port réseau ni processus
+séparé. Sont vérifiés le catalogue de règles, les compteurs du rapport, la
+prise en compte des règles désactivées, le fichier renvoyé par
+`/api/revisions` (type MIME, nom de téléchargement, contenu), le nom du
+relecteur et son repli sur « Scrubx », et les trois réponses d'erreur
+(`400` sans fichier ou mauvaise extension, `400` sans correction possible,
+`409` document déjà révisé).
+
+Le projet de tests référence donc `Scrubx.Web` en plus de `Scrubx.Cli` ;
+`Scrubx.Desktop`, spécifique à Windows, reste hors du périmètre (la CI
+tourne sur `ubuntu-latest` et ne construit que `tests/Scrubx.Tests`).
+
 `tests/Scrubx.Tests/UnitTest1.cs` semble être un fichier de test généré par
 défaut par le template — à vérifier/nettoyer si vide ou obsolète.
 

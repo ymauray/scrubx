@@ -1,0 +1,47 @@
+name: Rapport de bug
+description: Signaler un dysfonctionnement ou une régression
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: Merci de vérifier qu'un rapport similaire n'est pas déjà ouvert.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Version, tag ou commit utilisé, et application concernée (CLI, Web, Desktop).
+    validations:
+      required: true
+  - type: input
+    id: environnement
+    attributes:
+      label: Environnement
+      description: Système d'exploitation, architecture, version des outils.
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Description du problème
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Étapes de reproduction
+      placeholder: |
+        1. ...
+        2. ...
+    validations:
+      required: true
+  - type: textarea
+    id: attendu
+    attributes:
+      label: Comportement attendu
+    validations:
+      required: true
+  - type: textarea
+    id: contexte
+    attributes:
+      label: Informations complémentaires
+      description: Logs, captures d'écran, sortie de la CLI... Ne joignez pas de document confidentiel.

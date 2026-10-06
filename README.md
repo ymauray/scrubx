@@ -3,6 +3,7 @@
 [![Tests](https://github.com/ymauray/scrubx/actions/workflows/tests.yml/badge.svg)](https://github.com/ymauray/scrubx/actions/workflows/tests.yml)
 [![Licence : MIT](https://img.shields.io/github/license/ymauray/scrubx)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/ymauray/scrubx)](https://github.com/ymauray/scrubx/releases/latest)
+[![repocheck](https://img.shields.io/badge/repocheck%201.3.0-100%2F100-brightgreen)](https://github.com/ymauray/repocheck)
 
 Outil de vérification de mise en forme typographique de documents Word
 (`.docx`) : apostrophes droites, tirets invalides, espaces insécables

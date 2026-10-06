@@ -1,0 +1,7 @@
+# Fins de ligne normalisées, indépendamment de la configuration Git locale.
+* text=auto eol=lf
+
+# Fichiers binaires
+*.docx binary
+*.png binary
+*.ico binary

@@ -1,5 +1,9 @@
 # Scrubx
 
+[![Tests](https://github.com/ymauray/scrubx/actions/workflows/tests.yml/badge.svg)](https://github.com/ymauray/scrubx/actions/workflows/tests.yml)
+[![Licence : MIT](https://img.shields.io/github/license/ymauray/scrubx)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/ymauray/scrubx)](https://github.com/ymauray/scrubx/releases/latest)
+
 Outil de vérification de mise en forme typographique de documents Word
 (`.docx`) : apostrophes droites, tirets invalides, espaces insécables
 manquantes, styles de paragraphe non autorisés, sauts de page, etc.
